@@ -1,11 +1,16 @@
+import { findDistrictAndZoom, zoomToBangladesh } from "./queryActions";
 import { getVisibleLayersSummary, setLayerVisibility } from "./visibilityActions";
 
 import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
-import { zoomToBangladesh } from "./queryActions";
 
 interface ExecuteMapActionParams {
-  action: "showLayer" | "hideLayer" | "listVisibleLayers" | "zoomToBangladesh";
+  action:
+    | "showLayer"
+    | "hideLayer"
+    | "listVisibleLayers"
+    | "zoomToBangladesh"
+    | "zoomToDistrict";
   prompt: string;
   map: Map | null;
   view: MapView | null;
@@ -36,6 +41,15 @@ export async function executeMapAction(
         ok: result.ok,
         message: result.message,
         matchedLayer: "Bangladesh Boundary",
+      };
+    }
+
+    case "zoomToDistrict": {
+      const result = await findDistrictAndZoom(params.map, params.view, params.prompt);
+      return {
+        ok: result.ok,
+        message: result.message,
+        matchedLayer: result.matchedLayer ?? "District with population",
       };
     }
 

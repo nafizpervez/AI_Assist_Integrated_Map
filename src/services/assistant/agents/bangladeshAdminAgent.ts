@@ -6,17 +6,19 @@ import { formatAssistantResponse } from "../responseFormatter";
 
 interface Params {
   prompt: string;
+  intent: "zoomToBangladesh" | "zoomToDistrict";
   map: Map | null;
   view: MapView | null;
 }
 
 export async function runBangladeshAdminAgent({
   prompt,
+  intent,
   map,
   view,
 }: Params): Promise<AssistantResponse> {
   const result = await executeMapAction({
-    action: "zoomToBangladesh",
+    action: intent,
     prompt,
     map,
     view,
@@ -26,7 +28,7 @@ export async function runBangladeshAdminAgent({
     prompt,
     answer: result.message,
     agent: "bangladeshAdminAgent",
-    intent: "zoomToBangladesh",
+    intent,
     success: result.ok,
     matchedLayer: result.matchedLayer ?? null,
   });

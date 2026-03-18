@@ -10,6 +10,8 @@ export type AssistantIntent =
   | "hideLayer"
   | "listVisibleLayers"
   | "zoomToBangladesh"
+  | "zoomToDistrict"
+  | "zoomToUpazila"
   | "unknown";
 
 export interface RoutedPrompt {

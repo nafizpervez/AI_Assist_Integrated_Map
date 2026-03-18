@@ -4,4 +4,6 @@ export const promptExamples = [
   "zoom to bangladesh",
   "show population density",
   "show weather data",
+  "Nilphamari",
+  
 ];

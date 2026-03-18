@@ -49,6 +49,7 @@ export async function runAssistantPrompt({
   if (routed.agent === "bangladeshAdminAgent") {
     return runBangladeshAdminAgent({
       prompt,
+      intent: routed.intent as "zoomToBangladesh" | "zoomToDistrict",
       map,
       view,
     });
@@ -57,7 +58,7 @@ export async function runAssistantPrompt({
   return formatAssistantResponse({
     prompt,
     answer:
-      "I understood the prompt, but I do not support that command yet. Try: show airports, hide district, show railways, what layers are visible, zoom to bangladesh.",
+      "I understood the prompt, but I do not support that command yet. Try: show airports, hide district, zoom to bangladesh, nilphamari, district nilphamari, or show me nilphamari.",
     agent: "fallback",
     intent: "unknown",
     success: false,
