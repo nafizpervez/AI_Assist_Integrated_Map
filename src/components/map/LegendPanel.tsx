@@ -1,4 +1,27 @@
+import { useEffect, useRef } from "react";
+
+import Legend from "@arcgis/core/widgets/Legend";
+import { useMapView } from "../../hooks/useMapView";
+
 export default function LegendPanel() {
+    const { view } = useMapView();
+    const legendContainerRef = useRef<HTMLDivElement | null>(null);
+
+    useEffect(() => {
+        if (!view || !legendContainerRef.current) {
+            return;
+        }
+
+        const legend = new Legend({
+            view,
+            container: legendContainerRef.current,
+        });
+
+        return () => {
+            legend.destroy();
+        };
+    }, [view]);
+
     return (
         <div
             style={{
@@ -6,15 +29,27 @@ export default function LegendPanel() {
                 borderRadius: "10px",
                 padding: "12px",
                 background: "#fff",
+                minHeight: "750px",
             }}
         >
-            <div style={{ fontWeight: 700, marginBottom: "8px", color: "#111827" }}>
+            <div style={{ fontWeight: 700, marginBottom: "10px", color: "#111827" }}>
                 Legend
             </div>
-            <div style={{ fontSize: "13px", color: "#6b7280" }}>
-                Legend widget will be added in the next phase. For now, use the layer
-                toggles to inspect visibility.
-            </div>
+
+            {!view ? (
+                <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                    Map not ready yet.
+                </div>
+            ) : (
+                <div
+                    ref={legendContainerRef}
+                    style={{
+                        maxHeight: "720px",
+                        overflowY: "auto",
+                        overflowX: "hidden",
+                    }}
+                />
+            )}
         </div>
     );
 }

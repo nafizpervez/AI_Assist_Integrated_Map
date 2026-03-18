@@ -1,65 +1,20 @@
-import { useEffect, useState } from "react";
-
-import type Layer from "@arcgis/core/layers/Layer";
+import { useLayers } from "../../hooks/useLayers";
 import { useMapView } from "../../hooks/useMapView";
-
-interface LayerItem {
-    id: string;
-    title: string;
-    visible: boolean;
-}
 
 export default function LayerListPanel() {
     const { map } = useMapView();
-    const [layers, setLayers] = useState<LayerItem[]>([]);
-
-    useEffect(() => {
-        if (!map) {
-            setLayers([]);
-            return;
-        }
-
-        const syncLayers = () => {
-            const items = map.layers.toArray().map((layer: Layer) => ({
-                id: layer.id || layer.uid,
-                title: layer.title || layer.id || "Untitled layer",
-                visible: layer.visible,
-            }));
-
-            setLayers(items);
-        };
-
-        syncLayers();
-
-        const collectionHandle = map.layers.on("change", () => {
-            syncLayers();
-        });
-
-        const visibilityHandles = map.layers.toArray().map((layer) =>
-            layer.watch("visible", () => {
-                syncLayers();
-            })
-        );
-
-        return () => {
-            collectionHandle.remove();
-            visibilityHandles.forEach((handle) => handle.remove());
-        };
-    }, [map]);
+    const layers = useLayers();
 
     const toggleLayer = (layerId: string) => {
         if (!map) return;
 
-        const layer = map.layers.find((item) => item.id === layerId);
+        const layer = map.layers.find(
+            (item) => item.id === layerId || item.uid === layerId
+        );
+
         if (!layer) return;
 
         layer.visible = !layer.visible;
-
-        setLayers((prev) =>
-            prev.map((item) =>
-                item.id === layerId ? { ...item, visible: layer.visible } : item
-            )
-        );
     };
 
     return (
