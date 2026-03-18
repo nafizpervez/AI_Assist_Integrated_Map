@@ -99,6 +99,21 @@ function getExtremeLabel(extreme: PopulationExtreme): string {
   return extreme === "highest" ? "Highest" : "Lowest";
 }
 
+function isLocationStylePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  return (
+    normalized.startsWith("where is ") ||
+    normalized.startsWith("where ") ||
+    normalized.startsWith("show me ") ||
+    normalized.startsWith("show ")
+  );
+}
+
+function isPopulationStylePrompt(prompt: string): boolean {
+  return hasPopulationIntent(normalizeText(prompt));
+}
+
 function extractDistrictName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
@@ -406,14 +421,20 @@ async function openPopupForFeature(
   }
 }
 
-function buildDistrictResponse(feature: Graphic): string {
+function buildDistrictResponse(feature: Graphic, prompt: string): string {
   const districtName = String(feature.attributes?.name_2 ?? "Unknown District");
   const totalPopulation = formatPopulation(feature.attributes?.t_tl);
   const malePopulation = formatPopulation(feature.attributes?.m_tl);
   const femalePopulation = formatPopulation(feature.attributes?.f_tl);
 
+  const headline = isPopulationStylePrompt(prompt)
+    ? `${districtName} District has a total population of ${totalPopulation}.`
+    : isLocationStylePrompt(prompt)
+    ? `Showing ${districtName} District on the map.`
+    : `${districtName} District was found successfully.`;
+
   return [
-    "District search completed successfully.",
+    headline,
     "",
     `District: ${districtName}`,
     `Total Population: ${totalPopulation}`,
@@ -433,7 +454,7 @@ function buildDistrictExtremeResponse(
   const label = getExtremeLabel(extreme);
 
   return [
-    `District with ${extreme} population found successfully.`,
+    `${districtName} District has the ${extreme} population, with a total population of ${totalPopulation}.`,
     "",
     `District: ${districtName}`,
     `Ranking: ${label} population district`,
@@ -443,14 +464,20 @@ function buildDistrictExtremeResponse(
   ].join("\n");
 }
 
-function buildDivisionResponse(feature: Graphic): string {
+function buildDivisionResponse(feature: Graphic, prompt: string): string {
   const divisionName = String(feature.attributes?.name_1 ?? "Unknown Division");
   const totalPopulation = formatPopulation(feature.attributes?.f2011_total);
   const urbanPopulation = formatPopulation(feature.attributes?.f2011_urban);
   const ruralPopulation = formatPopulation(feature.attributes?.f2011_rural);
 
+  const headline = isPopulationStylePrompt(prompt)
+    ? `${divisionName} Division has a total population of ${totalPopulation}.`
+    : isLocationStylePrompt(prompt)
+    ? `Showing ${divisionName} Division on the map.`
+    : `${divisionName} Division was found successfully.`;
+
   return [
-    "Division search completed successfully.",
+    headline,
     "",
     `Division: ${divisionName}`,
     `Total Population: ${totalPopulation}`,
@@ -470,7 +497,7 @@ function buildDivisionExtremeResponse(
   const label = getExtremeLabel(extreme);
 
   return [
-    `Division with ${extreme} population found successfully.`,
+    `${divisionName} Division has the ${extreme} population, with a total population of ${totalPopulation}.`,
     "",
     `Division: ${divisionName}`,
     `Ranking: ${label} population division`,
@@ -480,7 +507,7 @@ function buildDivisionExtremeResponse(
   ].join("\n");
 }
 
-function buildUpazilaResponse(feature: Graphic): string {
+function buildUpazilaResponse(feature: Graphic, prompt: string): string {
   const upazilaName = String(
     feature.attributes?.name_3 ??
       feature.attributes?.upazila ??
@@ -488,8 +515,12 @@ function buildUpazilaResponse(feature: Graphic): string {
       "Unknown Upazila"
   );
 
+  const headline = isLocationStylePrompt(prompt)
+    ? `Showing ${upazilaName} Upazila on the map.`
+    : `${upazilaName} Upazila was found successfully.`;
+
   return [
-    "Upazila search completed successfully.",
+    headline,
     "",
     `Upazila: ${upazilaName}`,
     "Status: Boundary located and map updated",
@@ -885,7 +916,7 @@ export async function findDistrictAndZoom(
 
     return {
       ok: true,
-      message: buildDistrictResponse(matchedFeature),
+      message: buildDistrictResponse(matchedFeature, prompt),
       matchedLayer: "District with population",
     };
   } catch (error) {
@@ -968,7 +999,7 @@ export async function findDivisionAndZoom(
 
     return {
       ok: true,
-      message: buildDivisionResponse(matchedFeature),
+      message: buildDistrictResponse(matchedFeature, prompt),
       matchedLayer: "Division with population",
     };
   } catch (error) {
@@ -1047,7 +1078,7 @@ export async function findUpazilaAndZoom(
 
     return {
       ok: true,
-      message: buildUpazilaResponse(matchedFeature),
+      message: buildDistrictResponse(matchedFeature, prompt),
       matchedLayer: "Upazila with population",
     };
   } catch (error) {
@@ -1118,7 +1149,7 @@ export async function findAdministrativeAreaAndZoom(
 
           return {
             ok: true,
-            message: buildDivisionResponse(divisionMatch),
+            message: buildDivisionResponse(divisionMatch, prompt),
             matchedLayer: "Division with population",
           };
         }
@@ -1136,7 +1167,7 @@ export async function findAdministrativeAreaAndZoom(
 
           return {
             ok: true,
-            message: buildDistrictResponse(districtMatch),
+            message: buildDistrictResponse(districtMatch, prompt),
             matchedLayer: "District with population",
           };
         }
@@ -1154,7 +1185,7 @@ export async function findAdministrativeAreaAndZoom(
 
           return {
             ok: true,
-            message: buildUpazilaResponse(upazilaMatch),
+            message: buildUpazilaResponse(upazilaMatch, prompt),
             matchedLayer: "Upazila with population",
           };
         }
