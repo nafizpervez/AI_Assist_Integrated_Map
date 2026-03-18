@@ -1,15 +1,69 @@
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import { layerConfig } from "../../config/layers";
 
-function createPopupContent(attributes: Record<string, unknown>): string {
-  const rows = Object.entries(attributes)
-    .filter(([, value]) => value !== null && value !== undefined)
-    .slice(0, 30)
+type PopupFieldDefinition = {
+  name: string;
+  alias?: string | null;
+};
+
+type PopupEntry = {
+  key: string;
+  label: string;
+  value: unknown;
+};
+
+function escapeHtml(value: unknown): string {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function formatPopupValue(value: unknown): string {
+  if (value === null || value === undefined || value === "") {
+    return "—";
+  }
+
+  return String(value);
+}
+
+function createPopupContent(
+  attributes: Record<string, unknown>,
+  fieldDefinitions: PopupFieldDefinition[] = []
+): string {
+  const renderedKeys = new Set<string>();
+  const entries: PopupEntry[] = [];
+
+  for (const field of fieldDefinitions) {
+    renderedKeys.add(field.name);
+
+    entries.push({
+      key: field.name,
+      label: field.alias?.trim() || field.name,
+      value: attributes[field.name],
+    });
+  }
+
+  for (const [key, value] of Object.entries(attributes)) {
+    if (renderedKeys.has(key)) {
+      continue;
+    }
+
+    entries.push({
+      key,
+      label: key,
+      value,
+    });
+  }
+
+  const rows = entries
     .map(
-      ([key, value]) => `
+      (entry) => `
         <tr>
-          <td style="padding:6px 8px;border:1px solid #d1d5db;font-weight:600;vertical-align:top;background:#f9fafb;">${key}</td>
-          <td style="padding:6px 8px;border:1px solid #d1d5db;vertical-align:top;">${String(value)}</td>
+          <td style="padding:6px 8px;border:1px solid #d1d5db;font-weight:600;vertical-align:top;background:#f9fafb;">${escapeHtml(entry.label)}</td>
+          <td style="padding:6px 8px;border:1px solid #d1d5db;vertical-align:top;">${escapeHtml(formatPopupValue(entry.value))}</td>
         </tr>
       `
     )
@@ -20,7 +74,7 @@ function createPopupContent(attributes: Record<string, unknown>): string {
   }
 
   return `
-    <div style="max-height:260px;overflow:auto;">
+    <div style="max-height:320px;overflow:auto;">
       <table style="border-collapse:collapse;width:100%;font-size:12px;">
         <tbody>
           ${rows}
@@ -57,7 +111,18 @@ function buildFeatureLayer(options: {
               unknown
             >;
 
-            return createPopupContent(attributes);
+            const layer =
+              event?.graphic?.layer instanceof FeatureLayer
+                ? event.graphic.layer
+                : null;
+
+            const fieldDefinitions: PopupFieldDefinition[] =
+              layer?.fields?.map((field) => ({
+                name: field.name,
+                alias: field.alias ?? undefined,
+              })) ?? [];
+
+            return createPopupContent(attributes, fieldDefinitions);
           },
         }
       : undefined,

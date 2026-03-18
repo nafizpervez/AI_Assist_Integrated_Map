@@ -9,6 +9,7 @@ import type Graphic from "@arcgis/core/Graphic";
 import MapStatusBar from "./MapStatusBar";
 import type MapView from "@arcgis/core/views/MapView";
 import { createBangladeshMap } from "../../services/arcgis/createMap";
+import { getPopupFeatureFromLayer } from "../../services/arcgis/query/featureSearch";
 import { useMapView } from "../../hooks/useMapView";
 
 interface RemovableHandle {
@@ -99,10 +100,21 @@ export default function BangladeshMap() {
                                     ? clickedGraphic.layer
                                     : null;
 
-                            const popupGraphic = clickedGraphic as GraphicWithSourceLayer;
-                            popupGraphic.sourceLayer = fallbackLayer ?? popupGraphic.sourceLayer;
+                            if (!fallbackLayer) {
+                                return;
+                            }
+
+                            const freshPopupGraphic = await getPopupFeatureFromLayer(
+                                fallbackLayer,
+                                clickedGraphic,
+                                view
+                            );
+
+                            const popupGraphic = freshPopupGraphic as GraphicWithSourceLayer;
+                            popupGraphic.sourceLayer =
+                                fallbackLayer ?? popupGraphic.sourceLayer;
                             popupGraphic.popupTemplate =
-                                fallbackLayer?.popupTemplate ?? popupGraphic.popupTemplate;
+                                fallbackLayer.popupTemplate ?? popupGraphic.popupTemplate;
 
                             if (view.popup?.visible) {
                                 view.popup.close();
@@ -113,7 +125,10 @@ export default function BangladeshMap() {
                             if (view.popup) {
                                 view.popup.open({
                                     features: [popupGraphic],
-                                    location: getPopupLocation(popupGraphic) ?? event.mapPoint ?? undefined,
+                                    location:
+                                        getPopupLocation(popupGraphic) ??
+                                        event.mapPoint ??
+                                        undefined,
                                 });
                             }
                         } catch (error) {
