@@ -54,6 +54,62 @@ function matchesKnownLayerPhrase(value: string): boolean {
   );
 }
 
+function containsAny(text: string, candidates: string[]): boolean {
+  return candidates.some((candidate) => text.includes(candidate));
+}
+
+function hasPopulationIntent(text: string): boolean {
+  return containsAny(text, [
+    "population",
+    "people",
+    "populated",
+    "inhabitants",
+    "residents",
+  ]);
+}
+
+function hasHighestIntent(text: string): boolean {
+  return containsAny(text, [
+    "highest",
+    "most",
+    "maximum",
+    "max",
+    "largest",
+    "top",
+  ]);
+}
+
+function hasLowestIntent(text: string): boolean {
+  return containsAny(text, [
+    "lowest",
+    "least",
+    "minimum",
+    "min",
+    "smallest",
+    "bottom",
+  ]);
+}
+
+function isDistrictPopulationExtremePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  return (
+    normalized.includes("district") &&
+    hasPopulationIntent(normalized) &&
+    (hasHighestIntent(normalized) || hasLowestIntent(normalized))
+  );
+}
+
+function isDivisionPopulationExtremePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  return (
+    normalized.includes("division") &&
+    hasPopulationIntent(normalized) &&
+    (hasHighestIntent(normalized) || hasLowestIntent(normalized))
+  );
+}
+
 function extractExplicitDistrictCandidate(prompt: string): string | null {
   const normalized = normalizeText(prompt);
 
@@ -251,6 +307,24 @@ export function routePrompt(prompt: string): RoutedPrompt {
         intent: "hideLayer",
       };
     }
+  }
+
+  if (isDivisionPopulationExtremePrompt(prompt)) {
+    return {
+      prompt,
+      normalized,
+      agent: "bangladeshAdminAgent",
+      intent: "zoomToDivision",
+    };
+  }
+
+  if (isDistrictPopulationExtremePrompt(prompt)) {
+    return {
+      prompt,
+      normalized,
+      agent: "bangladeshAdminAgent",
+      intent: "zoomToDistrict",
+    };
   }
 
   const explicitUpazilaCandidate = extractExplicitUpazilaCandidate(prompt);

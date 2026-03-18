@@ -19,6 +19,7 @@ interface QueryResult {
 }
 
 type AdminLevel = "division" | "district" | "upazila";
+type PopulationExtreme = "highest" | "lowest";
 
 type GraphicWithSourceLayer = Graphic & {
   sourceLayer?: unknown;
@@ -26,6 +27,76 @@ type GraphicWithSourceLayer = Graphic & {
 
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function containsAny(text: string, candidates: string[]): boolean {
+  return candidates.some((candidate) => text.includes(candidate));
+}
+
+function hasPopulationIntent(text: string): boolean {
+  return containsAny(text, [
+    "population",
+    "people",
+    "populated",
+    "inhabitants",
+    "residents",
+  ]);
+}
+
+function getPopulationExtreme(prompt: string): PopulationExtreme | null {
+  const normalized = normalizeText(prompt);
+
+  if (
+    containsAny(normalized, [
+      "highest",
+      "most",
+      "maximum",
+      "max",
+      "largest",
+      "top",
+    ])
+  ) {
+    return "highest";
+  }
+
+  if (
+    containsAny(normalized, [
+      "lowest",
+      "least",
+      "minimum",
+      "min",
+      "smallest",
+      "bottom",
+    ])
+  ) {
+    return "lowest";
+  }
+
+  return null;
+}
+
+function isDistrictPopulationExtremePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  return (
+    normalized.includes("district") &&
+    hasPopulationIntent(normalized) &&
+    getPopulationExtreme(normalized) !== null
+  );
+}
+
+function isDivisionPopulationExtremePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  return (
+    normalized.includes("division") &&
+    hasPopulationIntent(normalized) &&
+    getPopulationExtreme(normalized) !== null
+  );
+}
+
+function getExtremeLabel(extreme: PopulationExtreme): string {
+  return extreme === "highest" ? "Highest" : "Lowest";
 }
 
 function extractDistrictName(prompt: string): string {
@@ -351,6 +422,27 @@ function buildDistrictResponse(feature: Graphic): string {
   ].join("\n");
 }
 
+function buildDistrictExtremeResponse(
+  feature: Graphic,
+  extreme: PopulationExtreme
+): string {
+  const districtName = String(feature.attributes?.name_2 ?? "Unknown District");
+  const totalPopulation = formatPopulation(feature.attributes?.t_tl);
+  const malePopulation = formatPopulation(feature.attributes?.m_tl);
+  const femalePopulation = formatPopulation(feature.attributes?.f_tl);
+  const label = getExtremeLabel(extreme);
+
+  return [
+    `District with ${extreme} population found successfully.`,
+    "",
+    `District: ${districtName}`,
+    `Ranking: ${label} population district`,
+    `Total Population: ${totalPopulation}`,
+    `Male Population: ${malePopulation}`,
+    `Female Population: ${femalePopulation}`,
+  ].join("\n");
+}
+
 function buildDivisionResponse(feature: Graphic): string {
   const divisionName = String(feature.attributes?.name_1 ?? "Unknown Division");
   const totalPopulation = formatPopulation(feature.attributes?.f2011_total);
@@ -361,6 +453,27 @@ function buildDivisionResponse(feature: Graphic): string {
     "Division search completed successfully.",
     "",
     `Division: ${divisionName}`,
+    `Total Population: ${totalPopulation}`,
+    `Urban Population: ${urbanPopulation}`,
+    `Rural Population: ${ruralPopulation}`,
+  ].join("\n");
+}
+
+function buildDivisionExtremeResponse(
+  feature: Graphic,
+  extreme: PopulationExtreme
+): string {
+  const divisionName = String(feature.attributes?.name_1 ?? "Unknown Division");
+  const totalPopulation = formatPopulation(feature.attributes?.f2011_total);
+  const urbanPopulation = formatPopulation(feature.attributes?.f2011_urban);
+  const ruralPopulation = formatPopulation(feature.attributes?.f2011_rural);
+  const label = getExtremeLabel(extreme);
+
+  return [
+    `Division with ${extreme} population found successfully.`,
+    "",
+    `Division: ${divisionName}`,
+    `Ranking: ${label} population division`,
     `Total Population: ${totalPopulation}`,
     `Urban Population: ${urbanPopulation}`,
     `Rural Population: ${ruralPopulation}`,
@@ -469,6 +582,45 @@ async function searchFeatureByFields(
   return null;
 }
 
+async function searchExtremeFeatureByNumericField(
+  layer: FeatureLayer,
+  fieldName: string,
+  extreme: PopulationExtreme
+): Promise<Graphic | null> {
+  await layer.load();
+
+  const query = layer.createQuery();
+  query.where = "1=1";
+  query.outFields = ["*"];
+  query.returnGeometry = true;
+
+  const featureSet = await layer.queryFeatures(query);
+
+  const validFeatures = featureSet.features.filter((feature) => {
+    const rawValue = feature.attributes?.[fieldName];
+    const numericValue = Number(rawValue);
+
+    return feature.geometry && Number.isFinite(numericValue);
+  });
+
+  if (!validFeatures.length) {
+    return null;
+  }
+
+  const selectedFeature = validFeatures.reduce((best, current) => {
+    const bestValue = Number(best.attributes?.[fieldName]);
+    const currentValue = Number(current.attributes?.[fieldName]);
+
+    if (extreme === "highest") {
+      return currentValue > bestValue ? current : best;
+    }
+
+    return currentValue < bestValue ? current : best;
+  });
+
+  return attachFeatureContext(selectedFeature, layer);
+}
+
 function getDistrictLayer(map: Map): FeatureLayer | null {
   const layer = map.layers.find((item) => item.id === "district");
   return layer instanceof FeatureLayer ? layer : null;
@@ -482,6 +634,132 @@ function getDivisionLayer(map: Map): FeatureLayer | null {
 function getUpazilaLayer(map: Map): FeatureLayer | null {
   const layer = map.layers.find((item) => item.id === "upazila");
   return layer instanceof FeatureLayer ? layer : null;
+}
+
+async function findDistrictByPopulationExtremeAndZoom(
+  map: Map,
+  view: MapView,
+  prompt: string
+): Promise<QueryResult> {
+  const districtLayer = getDistrictLayer(map);
+
+  if (!districtLayer) {
+    return {
+      ok: false,
+      message: 'The "District with population" layer was not found.',
+      matchedLayer: "District with population",
+    };
+  }
+
+  const extreme = getPopulationExtreme(prompt);
+
+  if (!extreme) {
+    return {
+      ok: false,
+      message: "Could not determine whether to search for highest or lowest district population.",
+      matchedLayer: "District with population",
+    };
+  }
+
+  try {
+    const matchedFeature = await searchExtremeFeatureByNumericField(
+      districtLayer,
+      "t_tl",
+      extreme
+    );
+
+    if (!matchedFeature) {
+      return {
+        ok: false,
+        message: `Could not determine the district with ${extreme} population.`,
+        matchedLayer: "District with population",
+      };
+    }
+
+    await zoomHighlightAndOpen(map, view, matchedFeature, "district", districtLayer);
+
+    return {
+      ok: true,
+      message: buildDistrictExtremeResponse(matchedFeature, extreme),
+      matchedLayer: "District with population",
+    };
+  } catch (error) {
+    console.error("findDistrictByPopulationExtremeAndZoom failed:", error);
+    clearActiveHighlight();
+
+    if (view.popup) {
+      view.popup.close();
+    }
+
+    return {
+      ok: false,
+      message: `Failed to search for the district with ${extreme} population.`,
+      matchedLayer: "District with population",
+    };
+  }
+}
+
+async function findDivisionByPopulationExtremeAndZoom(
+  map: Map,
+  view: MapView,
+  prompt: string
+): Promise<QueryResult> {
+  const divisionLayer = getDivisionLayer(map);
+
+  if (!divisionLayer) {
+    return {
+      ok: false,
+      message: 'The "Division with population" layer was not found.',
+      matchedLayer: "Division with population",
+    };
+  }
+
+  const extreme = getPopulationExtreme(prompt);
+
+  if (!extreme) {
+    return {
+      ok: false,
+      message: "Could not determine whether to search for highest or lowest division population.",
+      matchedLayer: "Division with population",
+    };
+  }
+
+  try {
+    const matchedFeature = await searchExtremeFeatureByNumericField(
+      divisionLayer,
+      "f2011_total",
+      extreme
+    );
+
+    if (!matchedFeature) {
+      return {
+        ok: false,
+        message: `Could not determine the division with ${extreme} population.`,
+        matchedLayer: "Division with population",
+      };
+    }
+
+    await zoomHighlightAndOpen(map, view, matchedFeature, "division", divisionLayer);
+
+    return {
+      ok: true,
+      message: buildDivisionExtremeResponse(matchedFeature, extreme),
+      matchedLayer: "Division with population",
+    };
+  } catch (error) {
+    console.error("findDivisionByPopulationExtremeAndZoom failed:", error);
+    clearActiveHighlight();
+
+    if (view.popup) {
+      view.popup.close();
+    }
+
+    return {
+      ok: false,
+      message: `Failed to search for the division with ${extreme} population.`,
+      matchedLayer: "Division with population",
+    };
+  }
 }
 
 export async function zoomToBangladesh(
@@ -554,6 +832,10 @@ export async function findDistrictAndZoom(
       message: "Map is not ready yet.",
       matchedLayer: "District with population",
     };
+  }
+
+  if (isDistrictPopulationExtremePrompt(prompt)) {
+    return findDistrictByPopulationExtremeAndZoom(map, view, prompt);
   }
 
   const districtName = extractDistrictName(prompt);
@@ -633,6 +915,10 @@ export async function findDivisionAndZoom(
       message: "Map is not ready yet.",
       matchedLayer: "Division with population",
     };
+  }
+
+  if (isDivisionPopulationExtremePrompt(prompt)) {
+    return findDivisionByPopulationExtremeAndZoom(map, view, prompt);
   }
 
   const divisionName = extractDivisionName(prompt);

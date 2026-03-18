@@ -35,7 +35,7 @@ function renderResponseSections(answer: string) {
                 <div
                     style={{
                         border: "1px solid #e2e8f0",
-                        borderRadius: "12px",
+                        borderRadius: "14px",
                         background: "#f8fafc",
                         overflow: "hidden",
                     }}
@@ -140,13 +140,33 @@ export default function AssistantPanel() {
             <div
                 style={{
                     border: "1px solid #e5e7eb",
-                    borderRadius: "10px",
-                    padding: "12px",
-                    background: "#fff",
+                    borderRadius: "16px",
+                    padding: "14px",
+                    background: "#ffffff",
+                    boxShadow: "0 12px 32px rgba(15, 23, 42, 0.05)",
                 }}
             >
-                <div style={{ fontWeight: 700, marginBottom: "8px", color: "#111827" }}>
+                <div
+                    style={{
+                        fontWeight: 800,
+                        marginBottom: "6px",
+                        color: "#0f172a",
+                        fontSize: "16px",
+                        letterSpacing: "-0.01em",
+                    }}
+                >
                     Assistant
+                </div>
+
+                <div
+                    style={{
+                        fontSize: "12px",
+                        color: "#64748b",
+                        marginBottom: "10px",
+                        lineHeight: 1.5,
+                    }}
+                >
+                    Ask the map to zoom, show layers, or find areas by population.
                 </div>
 
                 <textarea
@@ -157,11 +177,15 @@ export default function AssistantPanel() {
                     style={{
                         width: "100%",
                         resize: "vertical",
-                        padding: "10px",
-                        borderRadius: "8px",
+                        padding: "12px 13px",
+                        borderRadius: "12px",
                         border: "1px solid #d1d5db",
+                        background: "#f8fafc",
                         fontFamily: "inherit",
                         fontSize: "14px",
+                        color: "#0f172a",
+                        outline: "none",
+                        lineHeight: 1.5,
                     }}
                 />
 
@@ -171,37 +195,43 @@ export default function AssistantPanel() {
                     style={{
                         marginTop: "10px",
                         width: "100%",
-                        padding: "10px 12px",
+                        padding: "11px 12px",
                         border: "1px solid #111827",
                         background: "#111827",
                         color: "#fff",
-                        borderRadius: "8px",
+                        borderRadius: "12px",
                         cursor: running ? "not-allowed" : "pointer",
-                        fontWeight: 600,
+                        fontWeight: 700,
+                        fontSize: "13px",
                         opacity: running ? 0.7 : 1,
+                        boxShadow: "0 8px 20px rgba(15, 23, 42, 0.15)",
                     }}
                 >
                     {running ? "Running..." : "Run prompt"}
                 </button>
             </div>
 
-            <PromptExamples onSelect={(value) => void handleExampleSelect(value)} />
+            <PromptExamples
+                activePrompt={prompt}
+                onSelect={(value) => void handleExampleSelect(value)}
+            />
 
             <div
                 style={{
                     border: "1px solid #e5e7eb",
-                    borderRadius: "12px",
+                    borderRadius: "16px",
                     padding: "14px",
                     background: "#ffffff",
-                    boxShadow: result ? "0 8px 24px rgba(15, 23, 42, 0.06)" : "none",
+                    boxShadow: result ? "0 12px 32px rgba(15, 23, 42, 0.06)" : "0 6px 18px rgba(15, 23, 42, 0.03)",
                 }}
             >
                 <div
                     style={{
-                        fontWeight: 700,
+                        fontWeight: 800,
                         marginBottom: "10px",
                         color: "#0f172a",
                         fontSize: "15px",
+                        letterSpacing: "-0.01em",
                     }}
                 >
                     Response
@@ -210,7 +240,7 @@ export default function AssistantPanel() {
                 {result ? (
                     <div>{renderResponseSections(result.answer)}</div>
                 ) : (
-                    <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                    <div style={{ fontSize: "13px", color: "#6b7280", lineHeight: 1.5 }}>
                         No prompt has been run yet.
                     </div>
                 )}
