@@ -12,8 +12,8 @@ export type AssistantIntent =
   | "zoomToBangladesh"
   | "zoomToDistrict"
   | "zoomToDivision"
-  | "zoomToAdministrativeArea"
   | "zoomToUpazila"
+  | "zoomToAdministrativeArea"
   | "unknown";
 
 export interface RoutedPrompt {

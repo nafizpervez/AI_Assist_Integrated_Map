@@ -53,6 +53,7 @@ export async function runAssistantPrompt({
         | "zoomToBangladesh"
         | "zoomToDistrict"
         | "zoomToDivision"
+        | "zoomToUpazila"
         | "zoomToAdministrativeArea",
       map,
       view,
@@ -62,7 +63,7 @@ export async function runAssistantPrompt({
   return formatAssistantResponse({
     prompt,
     answer:
-      'I understood the prompt, but I do not support that command yet. Try: "show airports", "district nilphamari", "division khulna", "population nilphamari", or "people live in khulna".',
+      'I understood the prompt, but I do not support that command yet. Try: "show airports", "district nilphamari", "division khulna", "upazila savar", or "where is savar".',
     agent: "fallback",
     intent: "unknown",
     success: false,

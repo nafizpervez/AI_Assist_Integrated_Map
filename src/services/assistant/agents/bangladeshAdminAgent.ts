@@ -10,6 +10,7 @@ interface Params {
     | "zoomToBangladesh"
     | "zoomToDistrict"
     | "zoomToDivision"
+    | "zoomToUpazila"
     | "zoomToAdministrativeArea";
   map: Map | null;
   view: MapView | null;

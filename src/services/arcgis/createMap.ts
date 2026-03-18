@@ -22,7 +22,7 @@ export function createBangladeshMap(container: HTMLDivElement): MapBundle {
     },
     popupEnabled: true,
     popup: {
-      dockEnabled: false, // make it true if you want dock your pop at some fixed place of yout map.
+      dockEnabled: false,
       dockOptions: {
         buttonEnabled: true,
         breakpoint: false,

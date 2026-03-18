@@ -59,6 +59,12 @@ function extractExplicitDistrictCandidate(prompt: string): string | null {
 
   if (!normalized) return null;
 
+  if (normalized.startsWith("what is the population of district ")) {
+    return normalizeText(
+      normalized.slice("what is the population of district ".length)
+    );
+  }
+
   if (normalized.startsWith("population district ")) {
     return normalizeText(normalized.slice("population district ".length));
   }
@@ -83,6 +89,12 @@ function extractExplicitDivisionCandidate(prompt: string): string | null {
 
   if (!normalized) return null;
 
+  if (normalized.startsWith("what is the population of division ")) {
+    return normalizeText(
+      normalized.slice("what is the population of division ".length)
+    );
+  }
+
   if (normalized.startsWith("population division ")) {
     return normalizeText(normalized.slice("population division ".length));
   }
@@ -97,6 +109,22 @@ function extractExplicitDivisionCandidate(prompt: string): string | null {
 
   if (normalized.startsWith("division ")) {
     return normalizeText(normalized.slice("division ".length));
+  }
+
+  return null;
+}
+
+function extractExplicitUpazilaCandidate(prompt: string): string | null {
+  const normalized = normalizeText(prompt);
+
+  if (!normalized) return null;
+
+  if (normalized.startsWith("where is upazila ")) {
+    return normalizeText(normalized.slice("where is upazila ".length));
+  }
+
+  if (normalized.startsWith("upazila ")) {
+    return normalizeText(normalized.slice("upazila ".length));
   }
 
   return null;
@@ -125,12 +153,26 @@ function extractGenericAdministrativeCandidate(prompt: string): string | null {
     return null;
   }
 
+  if (normalized.startsWith("what is the population of ")) {
+    return normalizeText(
+      normalized.slice("what is the population of ".length)
+    );
+  }
+
   if (normalized.startsWith("population ")) {
     return normalizeText(normalized.slice("population ".length));
   }
 
   if (normalized.startsWith("people live in ")) {
     return normalizeText(normalized.slice("people live in ".length));
+  }
+
+  if (normalized.startsWith("where is ")) {
+    return normalizeText(normalized.slice("where is ".length));
+  }
+
+  if (normalized.startsWith("where ")) {
+    return normalizeText(normalized.slice("where ".length));
   }
 
   if (normalized.startsWith("show ")) {
@@ -209,6 +251,17 @@ export function routePrompt(prompt: string): RoutedPrompt {
         intent: "hideLayer",
       };
     }
+  }
+
+  const explicitUpazilaCandidate = extractExplicitUpazilaCandidate(prompt);
+
+  if (explicitUpazilaCandidate) {
+    return {
+      prompt,
+      normalized,
+      agent: "bangladeshAdminAgent",
+      intent: "zoomToUpazila",
+    };
   }
 
   const explicitDivisionCandidate = extractExplicitDivisionCandidate(prompt);

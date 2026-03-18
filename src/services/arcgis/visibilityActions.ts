@@ -32,7 +32,7 @@ const supportedLayers: SupportedLayer[] = [
   {
     id: "upazila",
     title: "Upazila with population",
-    aliases: ["upazila", "upazilas"],
+    aliases: ["upazila", "upazilas", "upaz"],
   },
   {
     id: "railways",
@@ -72,7 +72,7 @@ const supportedLayers: SupportedLayer[] = [
   {
     id: "population-density",
     title: "Population Density",
-    aliases: ["population density", "density", "population"],
+    aliases: ["population density", "density"],
   },
   {
     id: "weather",
@@ -86,8 +86,12 @@ const supportedLayers: SupportedLayer[] = [
   },
 ];
 
+function normalizeText(value: string): string {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
 function resolveLayerFromPrompt(prompt: string): SupportedLayer | null {
-  const normalized = prompt.trim().toLowerCase();
+  const normalized = normalizeText(prompt);
 
   for (const item of supportedLayers) {
     if (item.aliases.some((alias) => normalized.includes(alias))) {
@@ -104,6 +108,19 @@ function findMapLayer(map: Map, target: SupportedLayer): Layer | undefined {
       layer.id === target.id ||
       layer.title?.trim().toLowerCase() === target.title.trim().toLowerCase()
   );
+}
+
+export function setExclusiveVisibleLayers(
+  map: Map | null,
+  layerIds: string[]
+): void {
+  if (!map) return;
+
+  const allowedIds = new Set(layerIds);
+
+  map.layers.forEach((layer) => {
+    layer.visible = allowedIds.has(layer.id);
+  });
 }
 
 export function setLayerVisibility(
@@ -125,7 +142,7 @@ export function setLayerVisibility(
     return {
       ok: false,
       message:
-        "I could not match that layer. Try: airports, district, railways, rivers, national highways, or Bangladesh boundary.",
+        "I could not match that layer. Try: airports, district, division, upazila, railways, or Bangladesh boundary.",
       matchedLayer: null,
     };
   }
@@ -140,11 +157,25 @@ export function setLayerVisibility(
     };
   }
 
-  layer.visible = visible;
+  if (visible) {
+    if (target.id === "bd-boundary") {
+      setExclusiveVisibleLayers(map, ["bd-boundary"]);
+    } else {
+      setExclusiveVisibleLayers(map, ["bd-boundary", target.id]);
+    }
+
+    return {
+      ok: true,
+      message: `${target.title} is now visible.`,
+      matchedLayer: target.title,
+    };
+  }
+
+  layer.visible = false;
 
   return {
     ok: true,
-    message: `${target.title} is now ${visible ? "visible" : "hidden"}.`,
+    message: `${target.title} is now hidden.`,
     matchedLayer: target.title,
   };
 }

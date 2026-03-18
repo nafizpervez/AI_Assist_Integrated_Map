@@ -8,7 +8,6 @@ import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type Graphic from "@arcgis/core/Graphic";
 import MapStatusBar from "./MapStatusBar";
 import type MapView from "@arcgis/core/views/MapView";
-import type Popup from "@arcgis/core/widgets/Popup";
 import { createBangladeshMap } from "../../services/arcgis/createMap";
 import { useMapView } from "../../hooks/useMapView";
 
@@ -16,10 +15,30 @@ interface RemovableHandle {
     remove: () => void;
 }
 
-function hasGraphic(
-    result: unknown
-): result is { graphic: Graphic } {
+type GraphicWithSourceLayer = Graphic & {
+    sourceLayer?: unknown;
+};
+
+function hasGraphic(result: unknown): result is { graphic: Graphic } {
     return typeof result === "object" && result !== null && "graphic" in result;
+}
+
+function getPopupLocation(graphic: Graphic) {
+    const geometry = graphic.geometry;
+
+    if (!geometry) {
+        return null;
+    }
+
+    if ("extent" in geometry && geometry.extent) {
+        return geometry.extent.center;
+    }
+
+    if ("centroid" in geometry && geometry.centroid) {
+        return geometry.centroid;
+    }
+
+    return null;
 }
 
 export default function BangladeshMap() {
@@ -30,8 +49,6 @@ export default function BangladeshMap() {
         let viewInstance: MapView | null = null;
         let destroyed = false;
         let clickHandle: RemovableHandle | null = null;
-        let popupVisibleHandle: RemovableHandle | null = null;
-        let popupSelectedHandle: RemovableHandle | null = null;
 
         if (!mapRef.current) return;
 
@@ -77,40 +94,32 @@ export default function BangladeshMap() {
                                 return;
                             }
 
-                            await highlightGraphic(view, clickedGraphic);
+                            const fallbackLayer =
+                                clickedGraphic.layer instanceof FeatureLayer
+                                    ? clickedGraphic.layer
+                                    : null;
+
+                            const popupGraphic = clickedGraphic as GraphicWithSourceLayer;
+                            popupGraphic.sourceLayer = fallbackLayer ?? popupGraphic.sourceLayer;
+                            popupGraphic.popupTemplate =
+                                fallbackLayer?.popupTemplate ?? popupGraphic.popupTemplate;
+
+                            if (view.popup?.visible) {
+                                view.popup.close();
+                            }
+
+                            await highlightGraphic(view, popupGraphic, fallbackLayer);
 
                             if (view.popup) {
                                 view.popup.open({
-                                    features: [clickedGraphic],
-                                    location: event.mapPoint,
+                                    features: [popupGraphic],
+                                    location: getPopupLocation(popupGraphic) ?? event.mapPoint ?? undefined,
                                 });
                             }
                         } catch (error) {
                             console.error("Map click handling failed:", error);
                         }
                     });
-
-                    const popup = view.popup as Popup | null;
-
-                    if (popup) {
-                        popupVisibleHandle = popup.watch("visible", (visible: boolean) => {
-                            if (!visible) {
-                                clearActiveHighlight();
-                            }
-                        });
-
-                        popupSelectedHandle = popup.watch(
-                            "selectedFeature",
-                            async (selectedFeature: Graphic | null | undefined) => {
-                                if (!selectedFeature) {
-                                    clearActiveHighlight();
-                                    return;
-                                }
-
-                                await highlightGraphic(view, selectedFeature);
-                            }
-                        );
-                    }
                 },
                 (error) => {
                     console.error("Bangladesh map readiness failed:", error);
@@ -124,8 +133,6 @@ export default function BangladeshMap() {
             destroyed = true;
 
             clickHandle?.remove();
-            popupVisibleHandle?.remove();
-            popupSelectedHandle?.remove();
             clearActiveHighlight();
 
             setMapBundle({ map: null, view: null });

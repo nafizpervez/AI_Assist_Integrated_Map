@@ -1,12 +1,16 @@
+import * as reactiveUtils from "@arcgis/core/core/reactiveUtils";
+
 import {
   clearActiveHighlight,
   highlightGraphic,
 } from "./highlightActions";
 
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
+import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
 import type Graphic from "@arcgis/core/Graphic";
 import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
+import { setExclusiveVisibleLayers } from "./visibilityActions";
 
 interface QueryResult {
   ok: boolean;
@@ -14,6 +18,11 @@ interface QueryResult {
   matchedLayer?: string | null;
 }
 
+type AdminLevel = "division" | "district" | "upazila";
+
+type GraphicWithSourceLayer = Graphic & {
+  sourceLayer?: unknown;
+};
 
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -21,6 +30,12 @@ function normalizeText(value: string): string {
 
 function extractDistrictName(prompt: string): string {
   const normalized = normalizeText(prompt);
+
+  if (normalized.startsWith("what is the population of district ")) {
+    return normalizeText(
+      normalized.slice("what is the population of district ".length)
+    );
+  }
 
   if (normalized.startsWith("population district ")) {
     return normalizeText(normalized.slice("population district ".length));
@@ -44,6 +59,12 @@ function extractDistrictName(prompt: string): string {
 function extractDivisionName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
+  if (normalized.startsWith("what is the population of division ")) {
+    return normalizeText(
+      normalized.slice("what is the population of division ".length)
+    );
+  }
+
   if (normalized.startsWith("population division ")) {
     return normalizeText(normalized.slice("population division ".length));
   }
@@ -63,8 +84,36 @@ function extractDivisionName(prompt: string): string {
   return normalized;
 }
 
+function extractUpazilaName(prompt: string): string {
+  const normalized = normalizeText(prompt);
+
+  if (normalized.startsWith("where is upazila ")) {
+    return normalizeText(normalized.slice("where is upazila ".length));
+  }
+
+  if (normalized.startsWith("upazila ")) {
+    return normalizeText(normalized.slice("upazila ".length));
+  }
+
+  if (normalized.startsWith("where is ")) {
+    return normalizeText(normalized.slice("where is ".length));
+  }
+
+  if (normalized.startsWith("where ")) {
+    return normalizeText(normalized.slice("where ".length));
+  }
+
+  return normalized;
+}
+
 function extractGenericAdministrativeName(prompt: string): string {
   const normalized = normalizeText(prompt);
+
+  if (normalized.startsWith("what is the population of ")) {
+    return normalizeText(
+      normalized.slice("what is the population of ".length)
+    );
+  }
 
   if (normalized.startsWith("population ")) {
     return normalizeText(normalized.slice("population ".length));
@@ -72,6 +121,14 @@ function extractGenericAdministrativeName(prompt: string): string {
 
   if (normalized.startsWith("people live in ")) {
     return normalizeText(normalized.slice("people live in ".length));
+  }
+
+  if (normalized.startsWith("where is ")) {
+    return normalizeText(normalized.slice("where is ".length));
+  }
+
+  if (normalized.startsWith("where ")) {
+    return normalizeText(normalized.slice("where ".length));
   }
 
   if (normalized.startsWith("show me ")) {
@@ -83,6 +140,24 @@ function extractGenericAdministrativeName(prompt: string): string {
   }
 
   return normalized;
+}
+
+function getGenericSearchPriority(prompt: string): AdminLevel[] {
+  const normalized = normalizeText(prompt);
+
+  if (
+    normalized.startsWith("what is the population of ") ||
+    normalized.startsWith("population ") ||
+    normalized.startsWith("people live in ")
+  ) {
+    return ["district", "division", "upazila"];
+  }
+
+  if (normalized.startsWith("where is ") || normalized.startsWith("where ")) {
+    return ["upazila", "district", "division"];
+  }
+
+  return ["division", "district", "upazila"];
 }
 
 function formatPopulation(value: unknown): string {
@@ -111,6 +186,153 @@ function getPopupLocation(feature: Graphic) {
   }
 
   return null;
+}
+
+function attachFeatureContext(
+  feature: Graphic,
+  layer: FeatureLayer
+): GraphicWithSourceLayer {
+  const enrichedFeature = feature as GraphicWithSourceLayer;
+
+  enrichedFeature.sourceLayer = layer;
+  enrichedFeature.popupTemplate = layer.popupTemplate ?? feature.popupTemplate;
+
+  return enrichedFeature;
+}
+
+function getObjectIdFieldName(layer: FeatureLayer): string | null {
+  if (layer.objectIdField) {
+    return layer.objectIdField;
+  }
+
+  const oidField = layer.fields?.find((field) => field.type === "oid");
+  return oidField?.name ?? null;
+}
+
+function getFeatureObjectId(
+  feature: Graphic,
+  layer: FeatureLayer
+): number | null {
+  const objectIdField = getObjectIdFieldName(layer);
+
+  if (!objectIdField || !feature.attributes) {
+    return null;
+  }
+
+  const rawValue = feature.attributes[objectIdField];
+
+  if (rawValue === null || rawValue === undefined) {
+    return null;
+  }
+
+  const numericValue = Number(rawValue);
+
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+async function waitForLayerViewReady(
+  view: MapView,
+  layer: FeatureLayer
+): Promise<FeatureLayerView> {
+  const layerView = (await view.whenLayerView(layer)) as FeatureLayerView;
+
+  await reactiveUtils.whenOnce(() => !view.updating);
+  await reactiveUtils.whenOnce(() => !layerView.updating);
+
+  return layerView;
+}
+
+async function nextTick(): Promise<void> {
+  await new Promise<void>((resolve) => {
+    window.setTimeout(() => resolve(), 0);
+  });
+}
+
+async function getPopupFeatureFromLayer(
+  layer: FeatureLayer,
+  sourceFeature: Graphic,
+  view: MapView
+): Promise<Graphic> {
+  const objectId = getFeatureObjectId(sourceFeature, layer);
+
+  if (objectId === null) {
+    return attachFeatureContext(sourceFeature, layer);
+  }
+
+  const query = layer.createQuery();
+  query.objectIds = [objectId];
+  query.outFields = ["*"];
+  query.returnGeometry = true;
+  query.outSpatialReference = view.spatialReference;
+
+  const result = await layer.queryFeatures(query);
+  const freshFeature = result.features[0] ?? sourceFeature;
+
+  return attachFeatureContext(freshFeature, layer);
+}
+
+async function closePopupIfNeeded(view: MapView): Promise<void> {
+  if (!view.popup) {
+    return;
+  }
+
+  if (view.popup.visible) {
+    view.popup.close();
+    await nextTick();
+  }
+}
+
+async function openPopupForFeature(
+  view: MapView,
+  feature: Graphic
+): Promise<void> {
+  if (!view.popup) {
+    return;
+  }
+
+  const popupLocation = getPopupLocation(feature) ?? undefined;
+
+  view.popupEnabled = true;
+
+  await closePopupIfNeeded(view);
+
+  try {
+    await view.openPopup({
+      features: [feature],
+      location: popupLocation,
+    });
+
+    await nextTick();
+  } catch (error) {
+    console.warn("view.openPopup(features) failed, falling back:", error);
+
+    view.popup.open({
+      features: [feature],
+      location: popupLocation,
+    });
+
+    await nextTick();
+  }
+
+  if (!view.popup.visible && popupLocation) {
+    try {
+      await view.openPopup({
+        location: popupLocation,
+        fetchFeatures: true,
+      });
+
+      await nextTick();
+    } catch (error) {
+      console.warn("view.openPopup(fetchFeatures) failed:", error);
+    }
+  }
+
+  if (!view.popup.visible) {
+    view.popup.open({
+      features: [feature],
+      location: popupLocation,
+    });
+  }
 }
 
 function buildDistrictResponse(feature: Graphic): string {
@@ -145,19 +367,28 @@ function buildDivisionResponse(feature: Graphic): string {
   ].join("\n");
 }
 
-function buildAmbiguousAdministrativeResponse(placeName: string): string {
+function buildUpazilaResponse(feature: Graphic): string {
+  const upazilaName = String(
+    feature.attributes?.name_3 ??
+      feature.attributes?.upazila ??
+      feature.attributes?.upazila_name ??
+      "Unknown Upazila"
+  );
+
   return [
-    "Administrative search needs clarification.",
+    "Upazila search completed successfully.",
     "",
-    `Place Name: ${placeName}`,
-    "Matched Levels: District, Division",
-    'Action Required: Please specify "district <name>" or "division <name>"',
+    `Upazila: ${upazilaName}`,
+    "Status: Boundary located and map updated",
   ].join("\n");
 }
 
 async function zoomHighlightAndOpen(
+  map: Map,
   view: MapView,
-  feature: Graphic
+  feature: Graphic,
+  targetLayerId: string,
+  targetLayer: FeatureLayer
 ): Promise<void> {
   const targetGeometry = feature.geometry;
 
@@ -165,22 +396,33 @@ async function zoomHighlightAndOpen(
     return;
   }
 
+  setExclusiveVisibleLayers(map, ["bd-boundary", targetLayerId]);
+  targetLayer.visible = true;
+  targetLayer.popupEnabled = true;
+
+  await view.when();
+  await targetLayer.load();
+
+  const layerView = await waitForLayerViewReady(view, targetLayer);
+
+  await closePopupIfNeeded(view);
+  clearActiveHighlight();
+
   if ("extent" in targetGeometry && targetGeometry.extent) {
     await view.goTo(targetGeometry.extent.expand(1.5));
   } else {
     await view.goTo(targetGeometry);
   }
 
-  await highlightGraphic(view, feature);
+  await reactiveUtils.whenOnce(() => !view.updating);
+  await reactiveUtils.whenOnce(() => !layerView.updating);
+  await nextTick();
 
-  if (view.popup) {
-    const popupLocation = getPopupLocation(feature);
+  const popupFeature = await getPopupFeatureFromLayer(targetLayer, feature, view);
 
-    view.popup.open({
-      features: [feature],
-      location: popupLocation ?? undefined,
-    });
-  }
+  await highlightGraphic(view, popupFeature, targetLayer);
+  await nextTick();
+  await openPopupForFeature(view, popupFeature);
 }
 
 async function searchFeatureByField(
@@ -188,7 +430,6 @@ async function searchFeatureByField(
   fieldName: string,
   targetName: string
 ): Promise<Graphic | null> {
-  layer.visible = true;
   await layer.load();
 
   const query = layer.createQuery();
@@ -198,13 +439,34 @@ async function searchFeatureByField(
 
   const featureSet = await layer.queryFeatures(query);
 
-  return (
+  const matchedFeature =
     featureSet.features.find((feature) => {
       const rawValue = feature.attributes?.[fieldName];
       const candidate = normalizeText(String(rawValue ?? ""));
       return candidate === targetName;
-    }) ?? null
-  );
+    }) ?? null;
+
+  return matchedFeature ? attachFeatureContext(matchedFeature, layer) : null;
+}
+
+async function searchFeatureByFields(
+  layer: FeatureLayer,
+  fieldNames: string[],
+  targetName: string
+): Promise<Graphic | null> {
+  for (const fieldName of fieldNames) {
+    const matchedFeature = await searchFeatureByField(
+      layer,
+      fieldName,
+      targetName
+    );
+
+    if (matchedFeature) {
+      return matchedFeature;
+    }
+  }
+
+  return null;
 }
 
 function getDistrictLayer(map: Map): FeatureLayer | null {
@@ -214,6 +476,11 @@ function getDistrictLayer(map: Map): FeatureLayer | null {
 
 function getDivisionLayer(map: Map): FeatureLayer | null {
   const layer = map.layers.find((item) => item.id === "division");
+  return layer instanceof FeatureLayer ? layer : null;
+}
+
+function getUpazilaLayer(map: Map): FeatureLayer | null {
+  const layer = map.layers.find((item) => item.id === "upazila");
   return layer instanceof FeatureLayer ? layer : null;
 }
 
@@ -229,9 +496,7 @@ export async function zoomToBangladesh(
     };
   }
 
-  const boundaryLayer = map.layers.find(
-    (layer) => layer.id === "bd-boundary"
-  );
+  const boundaryLayer = map.layers.find((layer) => layer.id === "bd-boundary");
 
   if (!boundaryLayer || !(boundaryLayer instanceof FeatureLayer)) {
     return {
@@ -242,6 +507,7 @@ export async function zoomToBangladesh(
   }
 
   try {
+    setExclusiveVisibleLayers(map, ["bd-boundary"]);
     await boundaryLayer.load();
 
     const result = await boundaryLayer.queryExtent({
@@ -255,6 +521,9 @@ export async function zoomToBangladesh(
         matchedLayer: "Bangladesh Boundary",
       };
     }
+
+    await closePopupIfNeeded(view);
+    clearActiveHighlight();
 
     await view.goTo(result.extent.expand(1.1));
 
@@ -330,7 +599,7 @@ export async function findDistrictAndZoom(
       };
     }
 
-    await zoomHighlightAndOpen(view, matchedFeature);
+    await zoomHighlightAndOpen(map, view, matchedFeature, "district", districtLayer);
 
     return {
       ok: true,
@@ -409,7 +678,7 @@ export async function findDivisionAndZoom(
       };
     }
 
-    await zoomHighlightAndOpen(view, matchedFeature);
+    await zoomHighlightAndOpen(map, view, matchedFeature, "division", divisionLayer);
 
     return {
       ok: true,
@@ -432,6 +701,85 @@ export async function findDivisionAndZoom(
   }
 }
 
+export async function findUpazilaAndZoom(
+  map: Map | null,
+  view: MapView | null,
+  prompt: string
+): Promise<QueryResult> {
+  if (!map || !view) {
+    return {
+      ok: false,
+      message: "Map is not ready yet.",
+      matchedLayer: "Upazila with population",
+    };
+  }
+
+  const upazilaName = extractUpazilaName(prompt);
+
+  if (!upazilaName) {
+    return {
+      ok: false,
+      message: "Please provide an upazila name.",
+      matchedLayer: "Upazila with population",
+    };
+  }
+
+  const upazilaLayer = getUpazilaLayer(map);
+
+  if (!upazilaLayer) {
+    return {
+      ok: false,
+      message: 'The "Upazila with population" layer was not found.',
+      matchedLayer: "Upazila with population",
+    };
+  }
+
+  try {
+    const matchedFeature = await searchFeatureByFields(
+      upazilaLayer,
+      ["name_3", "upazila_name", "upazila", "name", "name_en"],
+      upazilaName
+    );
+
+    if (!matchedFeature) {
+      return {
+        ok: false,
+        message: `No upazila matched "${upazilaName}".`,
+        matchedLayer: "Upazila with population",
+      };
+    }
+
+    if (!matchedFeature.geometry) {
+      return {
+        ok: false,
+        message: `The upazila "${upazilaName}" was found, but its geometry is missing.`,
+        matchedLayer: "Upazila with population",
+      };
+    }
+
+    await zoomHighlightAndOpen(map, view, matchedFeature, "upazila", upazilaLayer);
+
+    return {
+      ok: true,
+      message: buildUpazilaResponse(matchedFeature),
+      matchedLayer: "Upazila with population",
+    };
+  } catch (error) {
+    console.error("findUpazilaAndZoom failed:", error);
+    clearActiveHighlight();
+
+    if (view.popup) {
+      view.popup.close();
+    }
+
+    return {
+      ok: false,
+      message: "Failed to search for the upazila.",
+      matchedLayer: "Upazila with population",
+    };
+  }
+}
+
 export async function findAdministrativeAreaAndZoom(
   map: Map | null,
   view: MapView | null,
@@ -450,80 +798,86 @@ export async function findAdministrativeAreaAndZoom(
   if (!placeName) {
     return {
       ok: false,
-      message: "Please provide a district or division name.",
+      message: "Please provide an administrative area name.",
       matchedLayer: null,
     };
   }
 
   const districtLayer = getDistrictLayer(map);
   const divisionLayer = getDivisionLayer(map);
+  const upazilaLayer = getUpazilaLayer(map);
 
-  if (!districtLayer && !divisionLayer) {
+  if (!districtLayer && !divisionLayer && !upazilaLayer) {
     return {
       ok: false,
       message:
-        'Neither "District with population" nor "Division with population" layer was found.',
+        'District, Division, and Upazila layers were not found in the current map.',
       matchedLayer: null,
     };
   }
 
   try {
-    let districtMatch: Graphic | null = null;
-    let divisionMatch: Graphic | null = null;
+    const searchPriority = getGenericSearchPriority(prompt);
 
-    if (districtLayer) {
-      districtMatch = await searchFeatureByField(
-        districtLayer,
-        "name_2",
-        placeName
-      );
-    }
+    for (const level of searchPriority) {
+      if (level === "division" && divisionLayer) {
+        const divisionMatch = await searchFeatureByField(
+          divisionLayer,
+          "name_1",
+          placeName
+        );
 
-    if (divisionLayer) {
-      divisionMatch = await searchFeatureByField(
-        divisionLayer,
-        "name_1",
-        placeName
-      );
-    }
+        if (divisionMatch?.geometry) {
+          await zoomHighlightAndOpen(map, view, divisionMatch, "division", divisionLayer);
 
-    if (districtMatch && divisionMatch) {
-      clearActiveHighlight();
-
-      if (view.popup) {
-        view.popup.close();
+          return {
+            ok: true,
+            message: buildDivisionResponse(divisionMatch),
+            matchedLayer: "Division with population",
+          };
+        }
       }
 
-      return {
-        ok: false,
-        message: buildAmbiguousAdministrativeResponse(placeName),
-        matchedLayer: "District with population / Division with population",
-      };
-    }
+      if (level === "district" && districtLayer) {
+        const districtMatch = await searchFeatureByField(
+          districtLayer,
+          "name_2",
+          placeName
+        );
 
-    if (districtMatch) {
-      await zoomHighlightAndOpen(view, districtMatch);
+        if (districtMatch?.geometry) {
+          await zoomHighlightAndOpen(map, view, districtMatch, "district", districtLayer);
 
-      return {
-        ok: true,
-        message: buildDistrictResponse(districtMatch),
-        matchedLayer: "District with population",
-      };
-    }
+          return {
+            ok: true,
+            message: buildDistrictResponse(districtMatch),
+            matchedLayer: "District with population",
+          };
+        }
+      }
 
-    if (divisionMatch) {
-      await zoomHighlightAndOpen(view, divisionMatch);
+      if (level === "upazila" && upazilaLayer) {
+        const upazilaMatch = await searchFeatureByFields(
+          upazilaLayer,
+          ["name_3", "upazila_name", "upazila", "name", "name_en"],
+          placeName
+        );
 
-      return {
-        ok: true,
-        message: buildDivisionResponse(divisionMatch),
-        matchedLayer: "Division with population",
-      };
+        if (upazilaMatch?.geometry) {
+          await zoomHighlightAndOpen(map, view, upazilaMatch, "upazila", upazilaLayer);
+
+          return {
+            ok: true,
+            message: buildUpazilaResponse(upazilaMatch),
+            matchedLayer: "Upazila with population",
+          };
+        }
+      }
     }
 
     return {
       ok: false,
-      message: `No district or division matched "${placeName}".`,
+      message: `No division, district, or upazila matched "${placeName}".`,
       matchedLayer: null,
     };
   } catch (error) {

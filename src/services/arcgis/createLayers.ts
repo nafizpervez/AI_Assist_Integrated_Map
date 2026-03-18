@@ -36,7 +36,10 @@ function buildFeatureLayer(options: {
   title: string;
   visible: boolean;
   opacity?: number;
+  popupEnabled?: boolean;
 }): FeatureLayer {
+  const popupEnabled = options.popupEnabled ?? true;
+
   return new FeatureLayer({
     url: options.url,
     id: options.id,
@@ -44,18 +47,20 @@ function buildFeatureLayer(options: {
     visible: options.visible,
     opacity: options.opacity,
     outFields: ["*"],
-    popupEnabled: true,
-    popupTemplate: {
-      title: options.title,
-      content: (event) => {
-        const attributes = (event?.graphic?.attributes ?? {}) as Record<
-          string,
-          unknown
-        >;
+    popupEnabled,
+    popupTemplate: popupEnabled
+      ? {
+          title: options.title,
+          content: (event) => {
+            const attributes = (event?.graphic?.attributes ?? {}) as Record<
+              string,
+              unknown
+            >;
 
-        return createPopupContent(attributes);
-      },
-    },
+            return createPopupContent(attributes);
+          },
+        }
+      : undefined,
   });
 }
 
@@ -65,8 +70,9 @@ export function createOperationalLayers(): FeatureLayer[] {
       url: layerConfig.bdBoundary.url,
       id: layerConfig.bdBoundary.id,
       title: layerConfig.bdBoundary.title,
-      visible: true,
+      visible: false,
       opacity: 0.4,
+      popupEnabled: false,
     }),
     buildFeatureLayer({
       url: layerConfig.division.url,

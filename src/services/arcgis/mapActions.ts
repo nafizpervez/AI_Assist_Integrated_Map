@@ -2,6 +2,7 @@ import {
   findAdministrativeAreaAndZoom,
   findDistrictAndZoom,
   findDivisionAndZoom,
+  findUpazilaAndZoom,
   zoomToBangladesh,
 } from "./queryActions";
 import { getVisibleLayersSummary, setLayerVisibility } from "./visibilityActions";
@@ -17,6 +18,7 @@ interface ExecuteMapActionParams {
     | "zoomToBangladesh"
     | "zoomToDistrict"
     | "zoomToDivision"
+    | "zoomToUpazila"
     | "zoomToAdministrativeArea";
   prompt: string;
   map: Map | null;
@@ -76,6 +78,20 @@ export async function executeMapAction(
         ok: result.ok,
         message: result.message,
         matchedLayer: result.matchedLayer ?? "Division with population",
+      };
+    }
+
+    case "zoomToUpazila": {
+      const result = await findUpazilaAndZoom(
+        params.map,
+        params.view,
+        params.prompt
+      );
+
+      return {
+        ok: result.ok,
+        message: result.message,
+        matchedLayer: result.matchedLayer ?? "Upazila with population",
       };
     }
 

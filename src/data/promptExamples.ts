@@ -5,5 +5,6 @@ export const promptExamples = [
   "show population density",
   "show weather data",
   "Nilphamari",
-  "show me khulna"
+  "division khulna",
+  "where is savar",
 ];
