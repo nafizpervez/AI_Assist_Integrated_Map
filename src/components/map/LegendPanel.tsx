@@ -29,7 +29,7 @@ export default function LegendPanel() {
                 borderRadius: "10px",
                 padding: "12px",
                 background: "#fff",
-                minHeight: "750px",
+                minHeight: "420px",
             }}
         >
             <div style={{ fontWeight: 700, marginBottom: "10px", color: "#111827" }}>
@@ -44,7 +44,7 @@ export default function LegendPanel() {
                 <div
                     ref={legendContainerRef}
                     style={{
-                        maxHeight: "720px",
+                        maxHeight: "400px",
                         overflowY: "auto",
                         overflowX: "hidden",
                     }}
