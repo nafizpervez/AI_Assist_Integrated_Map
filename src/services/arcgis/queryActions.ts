@@ -21,6 +21,10 @@ function normalizeText(value: string): string {
 function extractDistrictName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
+  if (normalized.startsWith("population ")) {
+    return normalizeText(normalized.slice("population ".length));
+  }
+
   if (normalized.startsWith("show me ")) {
     return normalizeText(normalized.slice("show me ".length));
   }
@@ -34,6 +38,16 @@ function extractDistrictName(prompt: string): string {
   }
 
   return normalized;
+}
+
+function formatPopulation(value: unknown): string {
+  const numericValue = Number(value);
+
+  if (!Number.isFinite(numericValue)) {
+    return "N/A";
+  }
+
+  return new Intl.NumberFormat("en-US").format(numericValue);
 }
 
 function getDistrictPopupLocation(feature: Graphic) {
@@ -52,6 +66,22 @@ function getDistrictPopupLocation(feature: Graphic) {
   }
 
   return null;
+}
+
+function buildDistrictResponse(feature: Graphic): string {
+  const districtName = String(feature.attributes?.name_2 ?? "Unknown District");
+  const totalPopulation = formatPopulation(feature.attributes?.t_tl);
+  const malePopulation = formatPopulation(feature.attributes?.m_tl);
+  const femalePopulation = formatPopulation(feature.attributes?.f_tl);
+
+  return [
+    `District search completed successfully.`,
+    ``,
+    `District: ${districtName}`,
+    `Total Population: ${totalPopulation}`,
+    `Male Population: ${malePopulation}`,
+    `Female Population: ${femalePopulation}`,
+  ].join("\n");
 }
 
 export async function zoomToBangladesh(
@@ -134,9 +164,7 @@ export async function findDistrictAndZoom(
     };
   }
 
-  const districtLayer = map.layers.find(
-    (layer) => layer.id === "district"
-  );
+  const districtLayer = map.layers.find((layer) => layer.id === "district");
 
   if (!districtLayer || !(districtLayer instanceof FeatureLayer)) {
     return {
@@ -201,9 +229,7 @@ export async function findDistrictAndZoom(
 
     return {
       ok: true,
-      message: `Found district "${String(
-        matchedFeature.attributes?.name_2 ?? districtName
-      )}" and zoomed to it.`,
+      message: buildDistrictResponse(matchedFeature),
       matchedLayer: "District with population",
     };
   } catch (error) {

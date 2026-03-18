@@ -77,6 +77,11 @@ function extractDistrictCandidate(prompt: string): string | null {
     return null;
   }
 
+  if (normalized.startsWith("population ")) {
+    const candidate = normalizeText(normalized.slice("population ".length));
+    return candidate || null;
+  }
+
   if (normalized.startsWith("show ")) {
     const afterShow = normalizeText(normalized.slice(5));
 
