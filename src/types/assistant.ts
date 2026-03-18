@@ -11,6 +11,8 @@ export type AssistantIntent =
   | "listVisibleLayers"
   | "zoomToBangladesh"
   | "zoomToDistrict"
+  | "zoomToDivision"
+  | "zoomToAdministrativeArea"
   | "zoomToUpazila"
   | "unknown";
 

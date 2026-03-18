@@ -1,4 +1,9 @@
-import { findDistrictAndZoom, zoomToBangladesh } from "./queryActions";
+import {
+  findAdministrativeAreaAndZoom,
+  findDistrictAndZoom,
+  findDivisionAndZoom,
+  zoomToBangladesh,
+} from "./queryActions";
 import { getVisibleLayersSummary, setLayerVisibility } from "./visibilityActions";
 
 import type Map from "@arcgis/core/Map";
@@ -10,7 +15,9 @@ interface ExecuteMapActionParams {
     | "hideLayer"
     | "listVisibleLayers"
     | "zoomToBangladesh"
-    | "zoomToDistrict";
+    | "zoomToDistrict"
+    | "zoomToDivision"
+    | "zoomToAdministrativeArea";
   prompt: string;
   map: Map | null;
   view: MapView | null;
@@ -45,11 +52,44 @@ export async function executeMapAction(
     }
 
     case "zoomToDistrict": {
-      const result = await findDistrictAndZoom(params.map, params.view, params.prompt);
+      const result = await findDistrictAndZoom(
+        params.map,
+        params.view,
+        params.prompt
+      );
+
       return {
         ok: result.ok,
         message: result.message,
         matchedLayer: result.matchedLayer ?? "District with population",
+      };
+    }
+
+    case "zoomToDivision": {
+      const result = await findDivisionAndZoom(
+        params.map,
+        params.view,
+        params.prompt
+      );
+
+      return {
+        ok: result.ok,
+        message: result.message,
+        matchedLayer: result.matchedLayer ?? "Division with population",
+      };
+    }
+
+    case "zoomToAdministrativeArea": {
+      const result = await findAdministrativeAreaAndZoom(
+        params.map,
+        params.view,
+        params.prompt
+      );
+
+      return {
+        ok: result.ok,
+        message: result.message,
+        matchedLayer: result.matchedLayer ?? null,
       };
     }
 

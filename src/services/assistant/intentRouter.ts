@@ -54,7 +54,55 @@ function matchesKnownLayerPhrase(value: string): boolean {
   );
 }
 
-function extractDistrictCandidate(prompt: string): string | null {
+function extractExplicitDistrictCandidate(prompt: string): string | null {
+  const normalized = normalizeText(prompt);
+
+  if (!normalized) return null;
+
+  if (normalized.startsWith("population district ")) {
+    return normalizeText(normalized.slice("population district ".length));
+  }
+
+  if (normalized.startsWith("people live in district ")) {
+    return normalizeText(normalized.slice("people live in district ".length));
+  }
+
+  if (normalized.startsWith("show me district ")) {
+    return normalizeText(normalized.slice("show me district ".length));
+  }
+
+  if (normalized.startsWith("district ")) {
+    return normalizeText(normalized.slice("district ".length));
+  }
+
+  return null;
+}
+
+function extractExplicitDivisionCandidate(prompt: string): string | null {
+  const normalized = normalizeText(prompt);
+
+  if (!normalized) return null;
+
+  if (normalized.startsWith("population division ")) {
+    return normalizeText(normalized.slice("population division ".length));
+  }
+
+  if (normalized.startsWith("people live in division ")) {
+    return normalizeText(normalized.slice("people live in division ".length));
+  }
+
+  if (normalized.startsWith("show me division ")) {
+    return normalizeText(normalized.slice("show me division ".length));
+  }
+
+  if (normalized.startsWith("division ")) {
+    return normalizeText(normalized.slice("division ".length));
+  }
+
+  return null;
+}
+
+function extractGenericAdministrativeCandidate(prompt: string): string | null {
   const normalized = normalizeText(prompt);
 
   if (!normalized) {
@@ -78,8 +126,11 @@ function extractDistrictCandidate(prompt: string): string | null {
   }
 
   if (normalized.startsWith("population ")) {
-    const candidate = normalizeText(normalized.slice("population ".length));
-    return candidate || null;
+    return normalizeText(normalized.slice("population ".length));
+  }
+
+  if (normalized.startsWith("people live in ")) {
+    return normalizeText(normalized.slice("people live in ".length));
   }
 
   if (normalized.startsWith("show ")) {
@@ -95,11 +146,6 @@ function extractDistrictCandidate(prompt: string): string | null {
     }
 
     return afterShow || null;
-  }
-
-  if (normalized.startsWith("district ")) {
-    const candidate = normalizeText(normalized.slice("district ".length));
-    return candidate || null;
   }
 
   return normalized;
@@ -165,14 +211,37 @@ export function routePrompt(prompt: string): RoutedPrompt {
     }
   }
 
-  const districtCandidate = extractDistrictCandidate(prompt);
+  const explicitDivisionCandidate = extractExplicitDivisionCandidate(prompt);
 
-  if (districtCandidate) {
+  if (explicitDivisionCandidate) {
+    return {
+      prompt,
+      normalized,
+      agent: "bangladeshAdminAgent",
+      intent: "zoomToDivision",
+    };
+  }
+
+  const explicitDistrictCandidate = extractExplicitDistrictCandidate(prompt);
+
+  if (explicitDistrictCandidate) {
     return {
       prompt,
       normalized,
       agent: "bangladeshAdminAgent",
       intent: "zoomToDistrict",
+    };
+  }
+
+  const genericAdministrativeCandidate =
+    extractGenericAdministrativeCandidate(prompt);
+
+  if (genericAdministrativeCandidate) {
+    return {
+      prompt,
+      normalized,
+      agent: "bangladeshAdminAgent",
+      intent: "zoomToAdministrativeArea",
     };
   }
 

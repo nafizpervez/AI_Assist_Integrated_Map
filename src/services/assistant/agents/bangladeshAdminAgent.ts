@@ -6,7 +6,11 @@ import { formatAssistantResponse } from "../responseFormatter";
 
 interface Params {
   prompt: string;
-  intent: "zoomToBangladesh" | "zoomToDistrict";
+  intent:
+    | "zoomToBangladesh"
+    | "zoomToDistrict"
+    | "zoomToDivision"
+    | "zoomToAdministrativeArea";
   map: Map | null;
   view: MapView | null;
 }
