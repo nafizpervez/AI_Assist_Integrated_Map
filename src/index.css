@@ -1,0 +1,27 @@
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  font-family:
+    Inter,
+    Arial,
+    sans-serif;
+  color: #111827;
+  background: #ffffff;
+}
+
+button,
+input,
+textarea {
+  font: inherit;
+}
