@@ -15,13 +15,13 @@ import {
   searchFeatureByField,
   searchFeatureByFields,
 } from "./featureSearch";
+import { resetLayerFilters, setExclusiveVisibleLayers } from "../visibilityActions";
 
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
 import type { QueryResult } from "./types";
 import { clearActiveHighlight } from "../highlightActions";
-import { setExclusiveVisibleLayers } from "../visibilityActions";
 
 export async function zoomToBangladesh(
   map: Map | null,
@@ -34,6 +34,8 @@ export async function zoomToBangladesh(
       matchedLayer: null,
     };
   }
+
+  resetLayerFilters(map);
 
   const boundaryLayer = map.layers.find((layer) => layer.id === "bd-boundary");
 
@@ -94,6 +96,8 @@ export async function findAdministrativeAreaAndZoom(
       matchedLayer: null,
     };
   }
+
+  resetLayerFilters(map);
 
   const placeName = extractGenericAdministrativeName(prompt);
 
@@ -189,7 +193,7 @@ export async function findAdministrativeAreaAndZoom(
           return {
             ok: true,
             message: buildUpazilaResponse(upazilaMatch, prompt),
-            matchedLayer: "Upazila with population",
+            matchedLayer: "Upazila",
           };
         }
       }

@@ -54,7 +54,9 @@ export async function runAssistantPrompt({
         | "zoomToDistrict"
         | "zoomToDivision"
         | "zoomToUpazila"
-        | "zoomToAdministrativeArea",
+        | "zoomToAdministrativeArea"
+        | "findLayerInArea"
+        | "findLayerBySpatialRelation",
       map,
       view,
     });
@@ -63,7 +65,7 @@ export async function runAssistantPrompt({
   return formatAssistantResponse({
     prompt,
     answer:
-      'I understood the prompt, but I do not support that command yet. Try: "show airports", "district nilphamari", "division khulna", "upazila savar", or "where is savar".',
+      'I understood the prompt, but I do not support that command yet. Try: "show airports", "district nilphamari", "division khulna", "upazila savar", "where is the airport at khulna division", or "which rivers are near rajshahi division".',
     agent: "fallback",
     intent: "unknown",
     success: false,

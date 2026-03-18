@@ -17,6 +17,7 @@ import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
 import type { QueryResult } from "./types";
 import { clearActiveHighlight } from "../highlightActions";
+import { resetLayerFilters } from "../visibilityActions";
 import { zoomHighlightAndOpen } from "./popupActions";
 
 async function findDistrictByPopulationExtremeAndZoom(
@@ -101,6 +102,8 @@ export async function findDistrictAndZoom(
       matchedLayer: "District with population",
     };
   }
+
+  resetLayerFilters(map);
 
   if (isDistrictPopulationExtremePrompt(prompt)) {
     return findDistrictByPopulationExtremeAndZoom(map, view, prompt);

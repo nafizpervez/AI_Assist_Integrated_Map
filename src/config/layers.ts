@@ -30,7 +30,7 @@ export const layerConfig = {
   },
   weather: {
     id: "weather",
-    title: "Weather Data Dummy",
+    title: "Weather Data",
     url: `${base}/${env.layerIds.weather}`,
   },
   railways: {
@@ -55,7 +55,7 @@ export const layerConfig = {
   },
   upazila: {
     id: "upazila",
-    title: "Upazila with population",
+    title: "Upazila",
     url: `${base}/${env.layerIds.upazila}`,
   },
   division: {

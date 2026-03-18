@@ -242,7 +242,7 @@ export default function RightPanel({
                             paddingRight: "2px",
                         }}
                     >
-                        <AssistantPanel />
+                        <AssistantPanel panelMode={mode} />
                     </div>
                 </>
             )}

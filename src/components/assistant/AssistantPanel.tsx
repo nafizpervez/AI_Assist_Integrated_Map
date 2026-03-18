@@ -5,6 +5,12 @@ import { runAssistantPrompt } from "../../services/assistant/assistantBootstrap"
 import { useMapView } from "../../hooks/useMapView";
 import { useState } from "react";
 
+type PanelMode = "collapsed" | "normal" | "expanded";
+
+interface AssistantPanelProps {
+    panelMode?: PanelMode;
+}
+
 function renderResponseSections(answer: string) {
     const lines = answer
         .split("\n")
@@ -104,7 +110,9 @@ function renderResponseSections(answer: string) {
     );
 }
 
-export default function AssistantPanel() {
+export default function AssistantPanel({
+    panelMode = "normal",
+}: AssistantPanelProps) {
     const { map, view } = useMapView();
     const [prompt, setPrompt] = useState("");
     const [result, setResult] = useState<AssistantResponse | null>(null);
@@ -212,6 +220,7 @@ export default function AssistantPanel() {
             </div>
 
             <PromptExamples
+                panelMode={panelMode}
                 activePrompt={prompt}
                 onSelect={(value) => void handleExampleSelect(value)}
             />

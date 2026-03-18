@@ -5,7 +5,9 @@ import {
   highlightGraphic,
 } from "../highlightActions";
 import {
+  getFeatureObjectIds,
   getPopupFeatureFromLayer,
+  setLayerFilterByObjectIds,
   waitForLayerViewReady,
 } from "./featureSearch";
 
@@ -139,6 +141,124 @@ export async function zoomHighlightAndOpen(
   await nextTick();
 
   const popupFeature = await getPopupFeatureFromLayer(targetLayer, feature, view);
+
+  await highlightGraphic(view, popupFeature, targetLayer);
+  await nextTick();
+  await openPopupForFeature(view, popupFeature);
+}
+
+interface ZoomToFilteredResultsParams {
+  map: Map;
+  view: MapView;
+  targetLayerId: string;
+  targetLayer: FeatureLayer;
+  targetFeatures: Graphic[];
+  contextLayerId?: string;
+  contextLayer?: FeatureLayer | null;
+  contextFeature?: Graphic | null;
+}
+
+async function goToFilteredResultExtent(
+  view: MapView,
+  targetLayer: FeatureLayer,
+  targetObjectIds: number[],
+  fallbackFeature: Graphic
+): Promise<void> {
+  if (targetObjectIds.length) {
+    const extentQuery = targetLayer.createQuery();
+    extentQuery.objectIds = targetObjectIds;
+
+    const extentResult = await targetLayer.queryExtent(extentQuery);
+
+    if (extentResult.extent) {
+      await view.goTo(
+        targetObjectIds.length === 1
+          ? extentResult.extent.expand(2)
+          : extentResult.extent.expand(1.4)
+      );
+      return;
+    }
+  }
+
+  if (fallbackFeature.geometry) {
+    if ("extent" in fallbackFeature.geometry && fallbackFeature.geometry.extent) {
+      await view.goTo(fallbackFeature.geometry.extent.expand(2));
+      return;
+    }
+
+    await view.goTo(fallbackFeature.geometry);
+  }
+}
+
+export async function zoomToFilteredResultsAndOpen(
+  params: ZoomToFilteredResultsParams
+): Promise<void> {
+  const {
+    map,
+    view,
+    targetLayerId,
+    targetLayer,
+    targetFeatures,
+    contextLayer,
+    contextLayerId,
+    contextFeature,
+  } = params;
+
+  if (!targetFeatures.length) {
+    return;
+  }
+
+  const targetObjectIds = getFeatureObjectIds(targetFeatures, targetLayer);
+
+  if (!targetObjectIds.length) {
+    return;
+  }
+
+  const visibleLayerIds = ["bd-boundary", targetLayerId];
+
+  if (contextLayerId) {
+    visibleLayerIds.push(contextLayerId);
+  }
+
+  setExclusiveVisibleLayers(map, Array.from(new Set(visibleLayerIds)));
+
+  targetLayer.visible = true;
+  targetLayer.popupEnabled = true;
+  setLayerFilterByObjectIds(targetLayer, targetObjectIds);
+
+  if (contextLayer && contextFeature) {
+    contextLayer.visible = true;
+
+    const contextObjectIds = getFeatureObjectIds([contextFeature], contextLayer);
+
+    if (contextObjectIds.length) {
+      setLayerFilterByObjectIds(contextLayer, contextObjectIds);
+    }
+  }
+
+  await view.when();
+  await targetLayer.load();
+
+  if (contextLayer) {
+    await contextLayer.load();
+  }
+
+  const targetLayerView = await waitForLayerViewReady(view, targetLayer);
+
+  await closePopupIfNeeded(view);
+  clearActiveHighlight();
+
+  await goToFilteredResultExtent(view, targetLayer, targetObjectIds, targetFeatures[0]);
+
+  await reactiveUtils.whenOnce(() => !view.updating);
+  await reactiveUtils.whenOnce(() => !targetLayerView.updating);
+  await nextTick();
+
+  const popupFeature = await getPopupFeatureFromLayer(
+    targetLayer,
+    targetFeatures[0],
+    view
+  );
 
   await highlightGraphic(view, popupFeature, targetLayer);
   await nextTick();

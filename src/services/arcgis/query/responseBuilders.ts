@@ -1,10 +1,18 @@
+import type {
+  AdminLevel,
+  PopulationExtreme,
+  SpatialRelation,
+} from "./types";
 import {
   isLocationStylePrompt,
   isPopulationStylePrompt,
 } from "./textUtils";
 
 import type Graphic from "@arcgis/core/Graphic";
-import type { PopulationExtreme } from "./types";
+
+function capitalize(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
 
 export function formatPopulation(value: unknown): string {
   const numericValue = Number(value);
@@ -18,6 +26,37 @@ export function formatPopulation(value: unknown): string {
 
 export function getExtremeLabel(extreme: PopulationExtreme): string {
   return extreme === "highest" ? "Highest" : "Lowest";
+}
+
+export function getAdministrativeAreaDisplayName(
+  feature: Graphic,
+  areaType: AdminLevel
+): string {
+  if (areaType === "division") {
+    return String(feature.attributes?.name_1 ?? "Unknown Division");
+  }
+
+  if (areaType === "district") {
+    return String(feature.attributes?.name_2 ?? "Unknown District");
+  }
+
+  return String(
+    feature.attributes?.name_3 ??
+      feature.attributes?.upazila ??
+      feature.attributes?.upazila_name ??
+      feature.attributes?.name ??
+      feature.attributes?.name_en ??
+      "Unknown Upazila"
+  );
+}
+
+export function getAdministrativeAreaDisplayLabel(
+  feature: Graphic,
+  areaType: AdminLevel
+): string {
+  return `${getAdministrativeAreaDisplayName(feature, areaType)} ${capitalize(
+    areaType
+  )}`;
 }
 
 export function buildDistrictResponse(
@@ -132,5 +171,95 @@ export function buildUpazilaResponse(
     "",
     `Upazila: ${upazilaName}`,
     "Status: Boundary located and map updated",
+  ].join("\n");
+}
+
+interface BuildLayerAreaResponseParams {
+  count: number;
+  nounSingular: string;
+  nounPlural: string;
+  areaDisplayLabel: string;
+  layerTitle: string;
+}
+
+export function buildLayerAreaSuccessResponse(
+  params: BuildLayerAreaResponseParams
+): string {
+  const noun = params.count === 1 ? params.nounSingular : params.nounPlural;
+  const verb = params.count === 1 ? "was" : "were";
+
+  return [
+    `${params.count} ${noun} ${verb} found inside ${params.areaDisplayLabel} area boundary.`,
+    "",
+    `Area: ${params.areaDisplayLabel}`,
+    `Layer: ${params.layerTitle}`,
+    `Result Count: ${params.count}`,
+  ].join("\n");
+}
+
+export function buildLayerAreaNoResultResponse(
+  params: Omit<BuildLayerAreaResponseParams, "count">
+): string {
+  return [
+    `No ${params.nounSingular} found in ${params.areaDisplayLabel} area boundary.`,
+    "",
+    `Area: ${params.areaDisplayLabel}`,
+    `Layer: ${params.layerTitle}`,
+    "Result Count: 0",
+  ].join("\n");
+}
+
+interface BuildSpatialRelationResponseParams {
+  count: number;
+  nounSingular: string;
+  nounPlural: string;
+  areaDisplayLabel: string;
+  relation: SpatialRelation;
+  layerTitle: string;
+}
+
+function getSpatialRelationLabel(relation: SpatialRelation): string {
+  if (relation === "inside") {
+    return "inside";
+  }
+
+  if (relation === "near") {
+    return "near";
+  }
+
+  return "across";
+}
+
+export function buildSpatialRelationSuccessResponse(
+  params: BuildSpatialRelationResponseParams
+): string {
+  const noun = params.count === 1 ? params.nounSingular : params.nounPlural;
+  const verb = params.count === 1 ? "was" : "were";
+  const relationLabel = getSpatialRelationLabel(params.relation);
+  const boundarySuffix = params.relation === "near" ? "boundary" : "area boundary";
+
+  return [
+    `${params.count} ${noun} ${verb} found ${relationLabel} ${params.areaDisplayLabel} ${boundarySuffix}.`,
+    "",
+    `Area: ${params.areaDisplayLabel}`,
+    `Relation: ${capitalize(relationLabel)}`,
+    `Layer: ${params.layerTitle}`,
+    `Result Count: ${params.count}`,
+  ].join("\n");
+}
+
+export function buildSpatialRelationNoResultResponse(
+  params: Omit<BuildSpatialRelationResponseParams, "count">
+): string {
+  const relationLabel = getSpatialRelationLabel(params.relation);
+  const boundarySuffix = params.relation === "near" ? "boundary" : "area boundary";
+
+  return [
+    `No ${params.nounPlural} found ${relationLabel} ${params.areaDisplayLabel} ${boundarySuffix}.`,
+    "",
+    `Area: ${params.areaDisplayLabel}`,
+    `Relation: ${capitalize(relationLabel)}`,
+    `Layer: ${params.layerTitle}`,
+    "Result Count: 0",
   ].join("\n");
 }

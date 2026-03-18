@@ -1,7 +1,23 @@
-import type { AdminLevel, PopulationExtreme } from "./types";
+import type {
+  AdminLevel,
+  AdministrativeAreaReference,
+  PopulationExtreme,
+  SpatialRelation,
+} from "./types";
+
+import { bdPlaceAliases } from "../../../data/bdPlaceAliases";
 
 export function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function normalizeAliasLookupKey(value: string): string {
+  return normalizeText(value).replace(/[.'’]/g, "");
+}
+
+export function normalizePlaceName(value: string): string {
+  const lookupKey = normalizeAliasLookupKey(value);
+  return bdPlaceAliases[lookupKey] ?? lookupKey;
 }
 
 export function containsAny(text: string, candidates: string[]): boolean {
@@ -87,118 +103,175 @@ export function isPopulationStylePrompt(prompt: string): boolean {
   return hasPopulationIntent(normalizeText(prompt));
 }
 
+export function prefersWithinBoundary(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  return (
+    normalized.includes(" inside ") ||
+    normalized.startsWith("inside ") ||
+    normalized.includes(" within ") ||
+    normalized.startsWith("within ")
+  );
+}
+
+export function extractSpatialRelation(prompt: string): SpatialRelation | null {
+  const normalized = normalizeText(prompt);
+
+  if (
+    normalized.includes(" near ") ||
+    normalized.startsWith("near ") ||
+    normalized.includes(" nearby ")
+  ) {
+    return "near";
+  }
+
+  if (
+    normalized.includes(" inside ") ||
+    normalized.startsWith("inside ") ||
+    normalized.includes(" within ") ||
+    normalized.startsWith("within ")
+  ) {
+    return "inside";
+  }
+
+  if (
+    normalized.includes(" across ") ||
+    normalized.startsWith("across ") ||
+    normalized.includes(" crossing ") ||
+    normalized.includes(" cross ")
+  ) {
+    return "across";
+  }
+
+  return null;
+}
+
 export function extractDistrictName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
   if (normalized.startsWith("what is the population of district ")) {
-    return normalizeText(
+    return normalizePlaceName(
       normalized.slice("what is the population of district ".length)
     );
   }
 
   if (normalized.startsWith("population district ")) {
-    return normalizeText(normalized.slice("population district ".length));
+    return normalizePlaceName(
+      normalized.slice("population district ".length)
+    );
   }
 
   if (normalized.startsWith("people live in district ")) {
-    return normalizeText(normalized.slice("people live in district ".length));
+    return normalizePlaceName(
+      normalized.slice("people live in district ".length)
+    );
   }
 
   if (normalized.startsWith("show me district ")) {
-    return normalizeText(normalized.slice("show me district ".length));
+    return normalizePlaceName(
+      normalized.slice("show me district ".length)
+    );
   }
 
   if (normalized.startsWith("district ")) {
-    return normalizeText(normalized.slice("district ".length));
+    return normalizePlaceName(normalized.slice("district ".length));
   }
 
-  return normalized;
+  return normalizePlaceName(normalized);
 }
 
 export function extractDivisionName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
   if (normalized.startsWith("what is the population of division ")) {
-    return normalizeText(
+    return normalizePlaceName(
       normalized.slice("what is the population of division ".length)
     );
   }
 
   if (normalized.startsWith("population division ")) {
-    return normalizeText(normalized.slice("population division ".length));
+    return normalizePlaceName(
+      normalized.slice("population division ".length)
+    );
   }
 
   if (normalized.startsWith("people live in division ")) {
-    return normalizeText(normalized.slice("people live in division ".length));
+    return normalizePlaceName(
+      normalized.slice("people live in division ".length)
+    );
   }
 
   if (normalized.startsWith("show me division ")) {
-    return normalizeText(normalized.slice("show me division ".length));
+    return normalizePlaceName(
+      normalized.slice("show me division ".length)
+    );
   }
 
   if (normalized.startsWith("division ")) {
-    return normalizeText(normalized.slice("division ".length));
+    return normalizePlaceName(normalized.slice("division ".length));
   }
 
-  return normalized;
+  return normalizePlaceName(normalized);
 }
 
 export function extractUpazilaName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
   if (normalized.startsWith("where is upazila ")) {
-    return normalizeText(normalized.slice("where is upazila ".length));
+    return normalizePlaceName(
+      normalized.slice("where is upazila ".length)
+    );
   }
 
   if (normalized.startsWith("upazila ")) {
-    return normalizeText(normalized.slice("upazila ".length));
+    return normalizePlaceName(normalized.slice("upazila ".length));
   }
 
   if (normalized.startsWith("where is ")) {
-    return normalizeText(normalized.slice("where is ".length));
+    return normalizePlaceName(normalized.slice("where is ".length));
   }
 
   if (normalized.startsWith("where ")) {
-    return normalizeText(normalized.slice("where ".length));
+    return normalizePlaceName(normalized.slice("where ".length));
   }
 
-  return normalized;
+  return normalizePlaceName(normalized);
 }
 
 export function extractGenericAdministrativeName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
   if (normalized.startsWith("what is the population of ")) {
-    return normalizeText(
+    return normalizePlaceName(
       normalized.slice("what is the population of ".length)
     );
   }
 
   if (normalized.startsWith("population ")) {
-    return normalizeText(normalized.slice("population ".length));
+    return normalizePlaceName(normalized.slice("population ".length));
   }
 
   if (normalized.startsWith("people live in ")) {
-    return normalizeText(normalized.slice("people live in ".length));
+    return normalizePlaceName(normalized.slice("people live in ".length));
   }
 
   if (normalized.startsWith("where is ")) {
-    return normalizeText(normalized.slice("where is ".length));
+    return normalizePlaceName(normalized.slice("where is ".length));
   }
 
   if (normalized.startsWith("where ")) {
-    return normalizeText(normalized.slice("where ".length));
+    return normalizePlaceName(normalized.slice("where ".length));
   }
 
   if (normalized.startsWith("show me ")) {
-    return normalizeText(normalized.slice("show me ".length));
+    return normalizePlaceName(normalized.slice("show me ".length));
   }
 
   if (normalized.startsWith("show ")) {
-    return normalizeText(normalized.slice("show ".length));
+    return normalizePlaceName(normalized.slice("show ".length));
   }
 
-  return normalized;
+  return normalizePlaceName(normalized);
 }
 
 export function getGenericSearchPriority(prompt: string): AdminLevel[] {
@@ -217,4 +290,70 @@ export function getGenericSearchPriority(prompt: string): AdminLevel[] {
   }
 
   return ["division", "district", "upazila"];
+}
+
+function extractAreaNameFromPrefix(prefix: string): string {
+  const separators = [
+    " inside ",
+    " within ",
+    " near ",
+    " across ",
+    " at ",
+    " in ",
+  ];
+
+  let bestIndex = -1;
+  let matchedSeparator = "";
+
+  for (const separator of separators) {
+    const index = prefix.lastIndexOf(separator);
+
+    if (index > bestIndex) {
+      bestIndex = index;
+      matchedSeparator = separator;
+    }
+  }
+
+  if (bestIndex > -1) {
+    return prefix.slice(bestIndex + matchedSeparator.length).trim();
+  }
+
+  return prefix.trim();
+}
+
+export function extractAdministrativeAreaReference(
+  prompt: string
+): AdministrativeAreaReference | null {
+  const normalized = normalizeText(prompt);
+  const areaTypes: AdminLevel[] = ["division", "district", "upazila"];
+
+  let matchedType: AdminLevel | null = null;
+  let matchedIndex = -1;
+
+  for (const areaType of areaTypes) {
+    const token = ` ${areaType}`;
+    const index = normalized.lastIndexOf(token);
+
+    if (index > matchedIndex) {
+      matchedIndex = index;
+      matchedType = areaType;
+    }
+  }
+
+  if (!matchedType || matchedIndex < 0) {
+    return null;
+  }
+
+  const prefix = normalized.slice(0, matchedIndex).trim();
+  const rawAreaName = extractAreaNameFromPrefix(prefix);
+  const areaName = normalizePlaceName(rawAreaName);
+
+  if (!areaName) {
+    return null;
+  }
+
+  return {
+    areaName,
+    areaType: matchedType,
+  };
 }

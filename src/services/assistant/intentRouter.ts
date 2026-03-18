@@ -1,57 +1,17 @@
-import type { RoutedPrompt } from "../../types/assistant";
+import {
+  extractAdministrativeAreaReference,
+  extractSpatialRelation,
+} from "../arcgis/query/textUtils";
+import {
+  resolveAreaQueryableLayerFromPrompt,
+  resolveSpatialQueryableLayerFromPrompt,
+  resolveSupportedLayerFromPrompt,
+} from "../../data/layerDictionary";
 
-const layerAliases = [
-  "airports",
-  "airport",
-  "district",
-  "districts",
-  "division",
-  "divisions",
-  "upazila",
-  "upazilas",
-  "upaz",
-  "railways",
-  "railway",
-  "rail",
-  "regional highways",
-  "regional highway",
-  "national highways",
-  "national highway",
-  "secondary highway",
-  "rivers",
-  "river",
-  "land port",
-  "sea port",
-  "land port sea port",
-  "economic zone",
-  "economic zones",
-  "bridge toll",
-  "bridge",
-  "toll",
-  "bridge road toll location",
-  "population density",
-  "density",
-  "weather",
-  "weather data",
-  "weather data dummy",
-  "bangladesh boundary",
-  "boundary",
-  "bangladesh",
-];
+import type { RoutedPrompt } from "../../types/assistant";
 
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
-
-function matchesKnownLayerPhrase(value: string): boolean {
-  const normalized = normalizeText(value);
-
-  return layerAliases.some(
-    (alias) =>
-      normalized === alias ||
-      normalized.includes(alias) ||
-      alias.includes(normalized)
-  );
 }
 
 function containsAny(text: string, candidates: string[]): boolean {
@@ -234,7 +194,7 @@ function extractGenericAdministrativeCandidate(prompt: string): string | null {
   if (normalized.startsWith("show ")) {
     const afterShow = normalizeText(normalized.slice(5));
 
-    if (matchesKnownLayerPhrase(afterShow)) {
+    if (resolveSupportedLayerFromPrompt(afterShow)) {
       return null;
     }
 
@@ -283,10 +243,34 @@ export function routePrompt(prompt: string): RoutedPrompt {
     };
   }
 
+  const administrativeAreaReference = extractAdministrativeAreaReference(prompt);
+  const spatialRelation = extractSpatialRelation(prompt);
+  const spatialLayer = resolveSpatialQueryableLayerFromPrompt(prompt);
+
+  if (administrativeAreaReference && spatialRelation && spatialLayer) {
+    return {
+      prompt,
+      normalized,
+      agent: "bangladeshAdminAgent",
+      intent: "findLayerBySpatialRelation",
+    };
+  }
+
+  const areaQueryableLayer = resolveAreaQueryableLayerFromPrompt(prompt);
+
+  if (administrativeAreaReference && areaQueryableLayer) {
+    return {
+      prompt,
+      normalized,
+      agent: "bangladeshAdminAgent",
+      intent: "findLayerInArea",
+    };
+  }
+
   if (normalized.startsWith("show ")) {
     const afterShow = normalizeText(normalized.slice(5));
 
-    if (matchesKnownLayerPhrase(afterShow)) {
+    if (resolveSupportedLayerFromPrompt(afterShow)) {
       return {
         prompt,
         normalized,
@@ -299,7 +283,7 @@ export function routePrompt(prompt: string): RoutedPrompt {
   if (normalized.startsWith("hide ")) {
     const afterHide = normalizeText(normalized.slice(5));
 
-    if (matchesKnownLayerPhrase(afterHide)) {
+    if (resolveSupportedLayerFromPrompt(afterHide)) {
       return {
         prompt,
         normalized,

@@ -1,13 +1,19 @@
 import * as reactiveUtils from "@arcgis/core/core/reactiveUtils";
 
-import type { GraphicWithSourceLayer, PopulationExtreme } from "./types";
+import type {
+  AdminLevel,
+  GraphicWithSourceLayer,
+  PopulationExtreme,
+  QuerySpatialRelationship,
+} from "./types";
 
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
+import type Geometry from "@arcgis/core/geometry/Geometry";
 import type Graphic from "@arcgis/core/Graphic";
 import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
-import { normalizeText } from "./textUtils";
+import { normalizePlaceName } from "./textUtils";
 
 export function attachFeatureContext(
   feature: Graphic,
@@ -49,6 +55,33 @@ export function getFeatureObjectId(
   const numericValue = Number(rawValue);
 
   return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+export function getFeatureObjectIds(
+  features: Graphic[],
+  layer: FeatureLayer
+): number[] {
+  return features
+    .map((feature) => getFeatureObjectId(feature, layer))
+    .filter((value): value is number => value !== null);
+}
+
+export function setLayerFilterByObjectIds(
+  layer: FeatureLayer,
+  objectIds: number[]
+): void {
+  const objectIdField = getObjectIdFieldName(layer);
+
+  if (!objectIdField) {
+    return;
+  }
+
+  if (!objectIds.length) {
+    layer.definitionExpression = "1 = 0";
+    return;
+  }
+
+  layer.definitionExpression = `${objectIdField} IN (${objectIds.join(",")})`;
 }
 
 export async function waitForLayerViewReady(
@@ -99,12 +132,13 @@ export async function searchFeatureByField(
   query.returnGeometry = true;
 
   const featureSet = await layer.queryFeatures(query);
+  const normalizedTarget = normalizePlaceName(targetName);
 
   const matchedFeature =
     featureSet.features.find((feature) => {
       const rawValue = feature.attributes?.[fieldName];
-      const candidate = normalizeText(String(rawValue ?? ""));
-      return candidate === targetName;
+      const candidate = normalizePlaceName(String(rawValue ?? ""));
+      return candidate === normalizedTarget;
     }) ?? null;
 
   return matchedFeature ? attachFeatureContext(matchedFeature, layer) : null;
@@ -169,17 +203,82 @@ export async function searchExtremeFeatureByNumericField(
   return attachFeatureContext(selectedFeature, layer);
 }
 
-export function getDistrictLayer(map: Map): FeatureLayer | null {
-  const layer = map.layers.find((item) => item.id === "district");
+export function getFeatureLayerById(
+  map: Map,
+  layerId: string
+): FeatureLayer | null {
+  const layer = map.layers.find((item) => item.id === layerId);
   return layer instanceof FeatureLayer ? layer : null;
+}
+
+export function getDistrictLayer(map: Map): FeatureLayer | null {
+  return getFeatureLayerById(map, "district");
 }
 
 export function getDivisionLayer(map: Map): FeatureLayer | null {
-  const layer = map.layers.find((item) => item.id === "division");
-  return layer instanceof FeatureLayer ? layer : null;
+  return getFeatureLayerById(map, "division");
 }
 
 export function getUpazilaLayer(map: Map): FeatureLayer | null {
-  const layer = map.layers.find((item) => item.id === "upazila");
-  return layer instanceof FeatureLayer ? layer : null;
+  return getFeatureLayerById(map, "upazila");
+}
+
+export async function findAdministrativeFeature(
+  map: Map,
+  areaType: AdminLevel,
+  areaName: string
+): Promise<{ feature: Graphic; layer: FeatureLayer } | null> {
+  if (areaType === "division") {
+    const layer = getDivisionLayer(map);
+
+    if (!layer) {
+      return null;
+    }
+
+    const feature = await searchFeatureByField(layer, "name_1", areaName);
+    return feature ? { feature, layer } : null;
+  }
+
+  if (areaType === "district") {
+    const layer = getDistrictLayer(map);
+
+    if (!layer) {
+      return null;
+    }
+
+    const feature = await searchFeatureByField(layer, "name_2", areaName);
+    return feature ? { feature, layer } : null;
+  }
+
+  const layer = getUpazilaLayer(map);
+
+  if (!layer) {
+    return null;
+  }
+
+  const feature = await searchFeatureByFields(
+    layer,
+    ["name_3", "upazila_name", "upazila", "name", "name_en"],
+    areaName
+  );
+
+  return feature ? { feature, layer } : null;
+}
+
+export async function queryFeaturesByGeometry(
+  layer: FeatureLayer,
+  geometry: Geometry,
+  spatialRelationship: QuerySpatialRelationship
+): Promise<Graphic[]> {
+  await layer.load();
+
+  const query = layer.createQuery();
+  query.geometry = geometry;
+  query.outFields = ["*"];
+  query.returnGeometry = true;
+  query.spatialRelationship = spatialRelationship as never;
+
+  const featureSet = await layer.queryFeatures(query);
+
+  return featureSet.features.map((feature) => attachFeatureContext(feature, layer));
 }

@@ -2,6 +2,8 @@ import {
   findAdministrativeAreaAndZoom,
   findDistrictAndZoom,
   findDivisionAndZoom,
+  findFeaturesBySpatialRelation,
+  findLayerFeaturesInAdministrativeArea,
   findUpazilaAndZoom,
   zoomToBangladesh,
 } from "./queryActions";
@@ -19,7 +21,9 @@ interface ExecuteMapActionParams {
     | "zoomToDistrict"
     | "zoomToDivision"
     | "zoomToUpazila"
-    | "zoomToAdministrativeArea";
+    | "zoomToAdministrativeArea"
+    | "findLayerInArea"
+    | "findLayerBySpatialRelation";
   prompt: string;
   map: Map | null;
   view: MapView | null;
@@ -91,12 +95,40 @@ export async function executeMapAction(
       return {
         ok: result.ok,
         message: result.message,
-        matchedLayer: result.matchedLayer ?? "Upazila with population",
+        matchedLayer: result.matchedLayer ?? "Upazila",
       };
     }
 
     case "zoomToAdministrativeArea": {
       const result = await findAdministrativeAreaAndZoom(
+        params.map,
+        params.view,
+        params.prompt
+      );
+
+      return {
+        ok: result.ok,
+        message: result.message,
+        matchedLayer: result.matchedLayer ?? null,
+      };
+    }
+
+    case "findLayerInArea": {
+      const result = await findLayerFeaturesInAdministrativeArea(
+        params.map,
+        params.view,
+        params.prompt
+      );
+
+      return {
+        ok: result.ok,
+        message: result.message,
+        matchedLayer: result.matchedLayer ?? null,
+      };
+    }
+
+    case "findLayerBySpatialRelation": {
+      const result = await findFeaturesBySpatialRelation(
         params.map,
         params.view,
         params.prompt

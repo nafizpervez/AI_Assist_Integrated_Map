@@ -9,9 +9,14 @@ export const promptExamples = [
   "where is savar",
   "which district has the highest population",
   "which district has the lowest population",
-  "in which district highest people lives",
   "which division has the highest population",
   "which division has the lowest population",
+  "where is the airport at khulna division",
   "most populated district",
-  "least populated division"
+  "least populated division",
+  "show me the ports in chattogram division",
+  "show me the ports in coxs bazar district",
+  "show me toll area inside dhaka district",
+  "show me toll area inside chattogram division",
+  "which rivers are near rajshahi division",
 ];

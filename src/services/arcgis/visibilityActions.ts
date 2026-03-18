@@ -1,5 +1,7 @@
+import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type Layer from "@arcgis/core/layers/Layer";
 import type Map from "@arcgis/core/Map";
+import { resolveSupportedLayerFromPrompt } from "../../data/layerDictionary";
 
 interface VisibilityResult {
   ok: boolean;
@@ -7,107 +9,30 @@ interface VisibilityResult {
   matchedLayer: string | null;
 }
 
-interface SupportedLayer {
-  id: string;
-  title: string;
-  aliases: string[];
-}
-
-const supportedLayers: SupportedLayer[] = [
-  {
-    id: "airports",
-    title: "Airports",
-    aliases: ["airports", "airport"],
-  },
-  {
-    id: "district",
-    title: "District with population",
-    aliases: ["district", "districts"],
-  },
-  {
-    id: "division",
-    title: "Division with population",
-    aliases: ["division", "divisions"],
-  },
-  {
-    id: "upazila",
-    title: "Upazila with population",
-    aliases: ["upazila", "upazilas", "upaz"],
-  },
-  {
-    id: "railways",
-    title: "Railways",
-    aliases: ["railways", "railway", "rail"],
-  },
-  {
-    id: "regional-highways",
-    title: "Regional Highways",
-    aliases: ["regional highways", "regional highway"],
-  },
-  {
-    id: "national-highways",
-    title: "National Highways",
-    aliases: ["national highways", "national highway"],
-  },
-  {
-    id: "rivers",
-    title: "Rivers",
-    aliases: ["rivers", "river"],
-  },
-  {
-    id: "land-port",
-    title: "Land Port Sea Port",
-    aliases: ["land port", "sea port", "land port sea port"],
-  },
-  {
-    id: "economic-zone",
-    title: "Economic Zone",
-    aliases: ["economic zone", "economic zones"],
-  },
-  {
-    id: "bridge-toll",
-    title: "Bridge Road Toll Location",
-    aliases: ["bridge toll", "bridge", "toll", "bridge road toll location"],
-  },
-  {
-    id: "population-density",
-    title: "Population Density",
-    aliases: ["population density", "density"],
-  },
-  {
-    id: "weather",
-    title: "Weather Data Dummy",
-    aliases: ["weather", "weather data", "weather data dummy"],
-  },
-  {
-    id: "bd-boundary",
-    title: "Bangladesh Boundary",
-    aliases: ["bangladesh boundary", "boundary", "bangladesh"],
-  },
-];
-
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
-function resolveLayerFromPrompt(prompt: string): SupportedLayer | null {
-  const normalized = normalizeText(prompt);
-
-  for (const item of supportedLayers) {
-    if (item.aliases.some((alias) => normalized.includes(alias))) {
-      return item;
-    }
-  }
-
-  return null;
+function resolveLayerFromPrompt(prompt: string) {
+  return resolveSupportedLayerFromPrompt(normalizeText(prompt));
 }
 
-function findMapLayer(map: Map, target: SupportedLayer): Layer | undefined {
+function findMapLayer(map: Map, targetId: string, targetTitle: string): Layer | undefined {
   return map.layers.find(
     (layer) =>
-      layer.id === target.id ||
-      layer.title?.trim().toLowerCase() === target.title.trim().toLowerCase()
+      layer.id === targetId ||
+      layer.title?.trim().toLowerCase() === targetTitle.trim().toLowerCase()
   );
+}
+
+export function resetLayerFilters(map: Map | null): void {
+  if (!map) return;
+
+  map.layers.forEach((layer) => {
+    if (layer instanceof FeatureLayer) {
+      layer.definitionExpression = undefined;
+    }
+  });
 }
 
 export function setExclusiveVisibleLayers(
@@ -142,12 +67,12 @@ export function setLayerVisibility(
     return {
       ok: false,
       message:
-        "I could not match that layer. Try: airports, district, division, upazila, railways, or Bangladesh boundary.",
+        "I could not match that layer. Try: airports, district, division, upazila, railways, rivers, ports, toll area, or Bangladesh boundary.",
       matchedLayer: null,
     };
   }
 
-  const layer = findMapLayer(map, target);
+  const layer = findMapLayer(map, target.id, target.title);
 
   if (!layer) {
     return {
@@ -158,6 +83,12 @@ export function setLayerVisibility(
   }
 
   if (visible) {
+    resetLayerFilters(map);
+
+    if (layer instanceof FeatureLayer) {
+      layer.definitionExpression = undefined;
+    }
+
     if (target.id === "bd-boundary") {
       setExclusiveVisibleLayers(map, ["bd-boundary"]);
     } else {
@@ -169,6 +100,10 @@ export function setLayerVisibility(
       message: `${target.title} is now visible.`,
       matchedLayer: target.title,
     };
+  }
+
+  if (layer instanceof FeatureLayer) {
+    layer.definitionExpression = undefined;
   }
 
   layer.visible = false;

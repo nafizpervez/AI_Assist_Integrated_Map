@@ -14,6 +14,8 @@ export type AssistantIntent =
   | "zoomToDivision"
   | "zoomToUpazila"
   | "zoomToAdministrativeArea"
+  | "findLayerInArea"
+  | "findLayerBySpatialRelation"
   | "unknown";
 
 export type AssistantEntityType =

@@ -1,16 +1,25 @@
 import { promptExamples } from "../../data/promptExamples";
 import { useState } from "react";
 
+type PanelMode = "collapsed" | "normal" | "expanded";
+
 interface Props {
     onSelect: (value: string) => void;
     activePrompt?: string;
+    panelMode?: PanelMode;
 }
 
 export default function PromptExamples({
     onSelect,
     activePrompt,
+    panelMode = "normal",
 }: Props) {
     const [hovered, setHovered] = useState<string | null>(null);
+
+    const columnTemplate =
+        panelMode === "expanded"
+            ? "repeat(3, minmax(0, 1fr))"
+            : "repeat(2, minmax(0, 1fr))";
 
     return (
         <div
@@ -47,14 +56,16 @@ export default function PromptExamples({
 
             <div
                 style={{
-                    display: "flex",
-                    flexWrap: "wrap",
+                    display: "grid",
+                    gridTemplateColumns: columnTemplate,
                     gap: "8px",
-                    alignItems: "flex-start",
+                    alignItems: "stretch",
                 }}
             >
                 {promptExamples.map((item) => {
-                    const isActive = activePrompt?.trim().toLowerCase() === item.trim().toLowerCase();
+                    const isActive =
+                        activePrompt?.trim().toLowerCase() ===
+                        item.trim().toLowerCase();
                     const isHovered = hovered === item;
 
                     return (
@@ -64,9 +75,10 @@ export default function PromptExamples({
                             onMouseEnter={() => setHovered(item)}
                             onMouseLeave={() => setHovered(null)}
                             style={{
+                                width: "100%",
                                 textAlign: "left",
-                                padding: "8px 12px",
-                                borderRadius: "999px",
+                                padding: "10px 12px",
+                                borderRadius: "18px",
                                 border: isActive
                                     ? "1px solid #111827"
                                     : isHovered
@@ -79,15 +91,17 @@ export default function PromptExamples({
                                         : "#ffffff",
                                 color: isActive ? "#ffffff" : "#0f172a",
                                 cursor: "pointer",
-                                fontSize: "10px",
+                                fontSize: "11px",
                                 fontWeight: isActive ? 700 : 500,
-                                lineHeight: 1.3,
+                                lineHeight: 1.35,
                                 transition: "all 140ms ease",
                                 boxShadow: isActive
                                     ? "0 6px 18px rgba(15, 23, 42, 0.18)"
                                     : "0 1px 2px rgba(15, 23, 42, 0.04)",
-                                maxWidth: "100%",
                                 whiteSpace: "normal",
+                                overflowWrap: "anywhere",
+                                wordBreak: "break-word",
+                                display: "block",
                             }}
                         >
                             {item}

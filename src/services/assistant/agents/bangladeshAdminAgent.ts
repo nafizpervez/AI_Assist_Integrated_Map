@@ -11,7 +11,9 @@ interface Params {
     | "zoomToDistrict"
     | "zoomToDivision"
     | "zoomToUpazila"
-    | "zoomToAdministrativeArea";
+    | "zoomToAdministrativeArea"
+    | "findLayerInArea"
+    | "findLayerBySpatialRelation";
   map: Map | null;
   view: MapView | null;
 }

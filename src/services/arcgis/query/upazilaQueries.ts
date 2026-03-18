@@ -9,6 +9,7 @@ import type { QueryResult } from "./types";
 import { buildUpazilaResponse } from "./responseBuilders";
 import { clearActiveHighlight } from "../highlightActions";
 import { extractUpazilaName } from "./textUtils";
+import { resetLayerFilters } from "../visibilityActions";
 import { zoomHighlightAndOpen } from "./popupActions";
 
 export async function findUpazilaAndZoom(
@@ -20,9 +21,11 @@ export async function findUpazilaAndZoom(
     return {
       ok: false,
       message: "Map is not ready yet.",
-      matchedLayer: "Upazila with population",
+      matchedLayer: "Upazila",
     };
   }
+
+  resetLayerFilters(map);
 
   const upazilaName = extractUpazilaName(prompt);
 
@@ -30,7 +33,7 @@ export async function findUpazilaAndZoom(
     return {
       ok: false,
       message: "Please provide an upazila name.",
-      matchedLayer: "Upazila with population",
+      matchedLayer: "Upazila",
     };
   }
 
@@ -39,8 +42,8 @@ export async function findUpazilaAndZoom(
   if (!upazilaLayer) {
     return {
       ok: false,
-      message: 'The "Upazila with population" layer was not found.',
-      matchedLayer: "Upazila with population",
+      message: 'The "Upazila" layer was not found.',
+      matchedLayer: "Upazila",
     };
   }
 
@@ -55,7 +58,7 @@ export async function findUpazilaAndZoom(
       return {
         ok: false,
         message: `No upazila matched "${upazilaName}".`,
-        matchedLayer: "Upazila with population",
+        matchedLayer: "Upazila",
       };
     }
 
@@ -63,7 +66,7 @@ export async function findUpazilaAndZoom(
       return {
         ok: false,
         message: `The upazila "${upazilaName}" was found, but its geometry is missing.`,
-        matchedLayer: "Upazila with population",
+        matchedLayer: "Upazila",
       };
     }
 
@@ -78,7 +81,7 @@ export async function findUpazilaAndZoom(
     return {
       ok: true,
       message: buildUpazilaResponse(matchedFeature, prompt),
-      matchedLayer: "Upazila with population",
+      matchedLayer: "Upazila",
     };
   } catch (error) {
     console.error("findUpazilaAndZoom failed:", error);
@@ -91,7 +94,7 @@ export async function findUpazilaAndZoom(
     return {
       ok: false,
       message: "Failed to search for the upazila.",
-      matchedLayer: "Upazila with population",
+      matchedLayer: "Upazila",
     };
   }
 }
