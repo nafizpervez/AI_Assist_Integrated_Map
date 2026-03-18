@@ -20,12 +20,16 @@ export function createBangladeshMap(container: HTMLDivElement): MapBundle {
     ui: {
       components: ["zoom"],
     },
+    popupEnabled: true,
     popup: {
-      dockEnabled: true,
+      dockEnabled: false, // make it true if you want dock your pop at some fixed place of yout map.
       dockOptions: {
         buttonEnabled: true,
         breakpoint: false,
         position: "bottom-right",
+      },
+      visibleElements: {
+        featureNavigation: true,
       },
     },
   });

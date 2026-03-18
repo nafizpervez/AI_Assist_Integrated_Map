@@ -1,6 +1,7 @@
 {
   "name": "bd-ai-assist-map",
   "private": true,
+  "author": "4E 41 46 49 5A 20 50 45 52 56 45 5A",
   "version": "0.0.0",
   "type": "module",
   "scripts": {
@@ -32,4 +33,5 @@
     "vite": "^8.0.0"
   }
 }
+
 
