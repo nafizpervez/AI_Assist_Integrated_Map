@@ -120,7 +120,7 @@ function AttributeTableContent({
                 display: "flex",
                 flexDirection: "column",
                 width: "100%",
-                height: isModal ? "100%" : "520px",
+                height: isModal ? "100%" : "450px",
                 background: "#ffffff",
                 border: isModal ? "1px solid rgba(255,255,255,0.08)" : "1px solid #e5e7eb",
                 borderRadius: isModal ? "20px" : "14px",
