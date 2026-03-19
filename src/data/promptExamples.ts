@@ -48,5 +48,12 @@ export const promptExamples = [
   "list airport",
   "table national highway",
   "table railways",
-  "data railway"
+  "data railway",
+  "Show me districts in Dhaka division, then open the table, then zoom to the biggest one",
+  "show me the most important ports in the south",
+  "which district seems most dense",
+  "compare Dhaka and Chattogram",
+  "find the nearest airport to this place",
+  "summarize what is visible on the map now"
+
 ];
