@@ -91,7 +91,7 @@ export default function PromptExamples({
                                         : "#ffffff",
                                 color: isActive ? "#ffffff" : "#0f172a",
                                 cursor: "pointer",
-                                fontSize: "11px",
+                                fontSize: "12px",
                                 fontWeight: isActive ? 700 : 500,
                                 lineHeight: 1.35,
                                 transition: "all 140ms ease",

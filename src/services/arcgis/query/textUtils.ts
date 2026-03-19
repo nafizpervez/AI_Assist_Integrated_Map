@@ -395,3 +395,58 @@ export function extractAdministrativeAreaReference(
     areaType: matchedType,
   };
 }
+
+export type PortSubtype = "sea" | "land" | null;
+
+export function extractPortSubtype(prompt: string): PortSubtype {
+  const normalized = normalizeText(prompt);
+
+  if (
+    normalized.includes("sea ports") ||
+    normalized.includes("sea port")
+  ) {
+    return "sea";
+  }
+
+  if (
+    normalized.includes("land ports") ||
+    normalized.includes("land port")
+  ) {
+    return "land";
+  }
+
+  return null;
+}
+
+export function isAllLayerScopePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  return (
+    normalized.startsWith("all ") ||
+    normalized.startsWith("show all ") ||
+    normalized.startsWith("show me all ") ||
+    normalized.startsWith("only ") ||
+    normalized.startsWith("show only ") ||
+    normalized.startsWith("show me only ")
+  );
+}
+
+export function isBangladeshScopePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  return (
+    normalized === "bd" ||
+    normalized === "bangladesh" ||
+    normalized.includes(" in bd") ||
+    normalized.includes(" in bangladesh") ||
+    normalized.includes(" inside bd") ||
+    normalized.includes(" inside bangladesh") ||
+    normalized.includes(" within bd") ||
+    normalized.includes(" within bangladesh") ||
+    normalized.includes(" across bd") ||
+    normalized.includes(" across bangladesh") ||
+    normalized.includes(" at bd") ||
+    normalized.includes(" at bangladesh") ||
+    isAllLayerScopePrompt(prompt)
+  );
+}

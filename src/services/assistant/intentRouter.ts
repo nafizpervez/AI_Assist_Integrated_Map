@@ -1,6 +1,8 @@
 import {
   extractAdministrativeAreaReference,
   extractSpatialRelation,
+  isAllLayerScopePrompt,
+  isBangladeshScopePrompt,
 } from "../arcgis/query/textUtils";
 import {
   resolveAreaQueryableLayerFromPrompt,
@@ -187,6 +189,10 @@ function extractGenericAdministrativeCandidate(prompt: string): string | null {
     return null;
   }
 
+  if (isAllLayerScopePrompt(prompt) && resolveAreaQueryableLayerFromPrompt(prompt)) {
+    return null;
+  }
+
   if (normalized.startsWith("what is the population of ")) {
     return normalizeText(
       normalized.slice("what is the population of ".length)
@@ -276,7 +282,10 @@ export function routePrompt(prompt: string): RoutedPrompt {
 
   const areaQueryableLayer = resolveAreaQueryableLayerFromPrompt(prompt);
 
-  if (administrativeAreaReference && areaQueryableLayer) {
+  if (
+    (administrativeAreaReference && areaQueryableLayer) ||
+    (isBangladeshScopePrompt(prompt) && areaQueryableLayer)
+  ) {
     return {
       prompt,
       normalized,

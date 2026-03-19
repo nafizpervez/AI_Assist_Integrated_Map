@@ -7,9 +7,12 @@ import {
 } from "./responseBuilders";
 import {
   extractAdministrativeAreaReference,
+  extractPortSubtype,
   getPopulationExtreme,
+  isBangladeshScopePrompt,
   normalizeMatchValue,
   normalizeText,
+  type PortSubtype,
 } from "./textUtils";
 import {
   findAdministrativeFeature,
@@ -24,10 +27,10 @@ import {
   searchDistrictFeatureByNameOrVarname,
 } from "./featureSearch";
 
-import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type Graphic from "@arcgis/core/Graphic";
 import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
+import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import { clearActiveHighlight } from "../highlightActions";
 import { resetLayerFilters } from "../visibilityActions";
 import { resolveAreaQueryableLayerFromPrompt } from "../../../data/layerDictionary";
@@ -83,6 +86,64 @@ function getDistinctFeatureLabels(features: Graphic[]): string[] {
   );
 }
 
+function matchesPortSubtype(
+  feature: Graphic,
+  portSubtype: PortSubtype
+): boolean {
+  if (!portSubtype) {
+    return true;
+  }
+
+  const rawPortValue = getAttributeStringCaseInsensitive(feature, [
+    "Port",
+    "port",
+  ]);
+
+  const normalizedPortValue = normalizeText(rawPortValue);
+
+  if (portSubtype === "sea") {
+    return normalizedPortValue === "sea port";
+  }
+
+  if (portSubtype === "land") {
+    return normalizedPortValue === "land port";
+  }
+
+  return true;
+}
+
+function filterLandPortFeaturesBySubtype(
+  features: Graphic[],
+  portSubtype: PortSubtype
+): Graphic[] {
+  return features.filter((feature) => matchesPortSubtype(feature, portSubtype));
+}
+
+function getPortSubtypeNouns(
+  portSubtype: PortSubtype,
+  defaultSingular: string,
+  defaultPlural: string
+): { nounSingular: string; nounPlural: string } {
+  if (portSubtype === "sea") {
+    return {
+      nounSingular: "sea port",
+      nounPlural: "sea ports",
+    };
+  }
+
+  if (portSubtype === "land") {
+    return {
+      nounSingular: "land port",
+      nounPlural: "land ports",
+    };
+  }
+
+  return {
+    nounSingular: defaultSingular,
+    nounPlural: defaultPlural,
+  };
+}
+
 async function findLandPortDistrictBoundaryMatch(
   map: Map,
   areaName: string
@@ -103,7 +164,8 @@ async function findLandPortDistrictBoundaryMatch(
 
 async function queryLandPortsByDistrictReference(
   targetLayer: FeatureLayer,
-  districtFeature: Graphic
+  districtFeature: Graphic,
+  portSubtype: PortSubtype
 ): Promise<Graphic[]> {
   const districtReferenceTokens =
     getPreferredDistrictReferenceTokens(districtFeature);
@@ -114,7 +176,7 @@ async function queryLandPortsByDistrictReference(
 
   const allPortFeatures = await queryAllFeatures(targetLayer);
 
-  return allPortFeatures.filter((feature) => {
+  const matchedByDistrict = allPortFeatures.filter((feature) => {
     const divisionValue = getAttributeStringCaseInsensitive(feature, [
       "Division",
       "division",
@@ -126,6 +188,58 @@ async function queryLandPortsByDistrictReference(
       (token) => token === normalizedDivisionValue
     );
   });
+
+  return filterLandPortFeaturesBySubtype(matchedByDistrict, portSubtype);
+}
+
+async function queryFeaturesInBangladesh(
+  map: Map,
+  targetLayer: FeatureLayer,
+  targetLayerId: string,
+  portSubtype: PortSubtype
+): Promise<{
+  boundaryMatch: { feature: Graphic; layer: FeatureLayer } | null;
+  matchedFeatures: Graphic[];
+  areaDisplayLabel: string;
+}> {
+  const bdBoundaryLayer = getFeatureLayerById(map, "bd-boundary");
+
+  if (!bdBoundaryLayer) {
+    return {
+      boundaryMatch: null,
+      matchedFeatures: [],
+      areaDisplayLabel: "Bangladesh",
+    };
+  }
+
+  const boundaryFeatures = await queryAllFeatures(bdBoundaryLayer);
+  const boundaryFeature = boundaryFeatures[0] ?? null;
+
+  if (!boundaryFeature?.geometry) {
+    return {
+      boundaryMatch: boundaryFeature
+        ? { feature: boundaryFeature, layer: bdBoundaryLayer }
+        : null,
+      matchedFeatures: [],
+      areaDisplayLabel: "Bangladesh",
+    };
+  }
+
+  const matchedFeatures = await queryFeaturesByGeometry(
+    targetLayer,
+    boundaryFeature.geometry,
+    isLandPortLayer(targetLayerId) ? "intersects" : getAreaQuerySpatialRelationship()
+  );
+
+  const filteredFeatures = isLandPortLayer(targetLayerId)
+    ? filterLandPortFeaturesBySubtype(matchedFeatures, portSubtype)
+    : matchedFeatures;
+
+  return {
+    boundaryMatch: { feature: boundaryFeature, layer: bdBoundaryLayer },
+    matchedFeatures: filteredFeatures,
+    areaDisplayLabel: "Bangladesh",
+  };
 }
 
 async function resolveMatchedFeaturesForArea(params: {
@@ -134,6 +248,7 @@ async function resolveMatchedFeaturesForArea(params: {
   targetLayerId: string;
   areaType: "division" | "district" | "upazila";
   areaName: string;
+  portSubtype: PortSubtype;
 }): Promise<{
   boundaryMatch: { feature: Graphic; layer: FeatureLayer } | null;
   matchedFeatures: Graphic[];
@@ -153,7 +268,8 @@ async function resolveMatchedFeaturesForArea(params: {
 
     const matchedFeatures = await queryLandPortsByDistrictReference(
       params.targetLayer,
-      boundaryMatch.feature
+      boundaryMatch.feature,
+      params.portSubtype
     );
 
     return {
@@ -186,9 +302,13 @@ async function resolveMatchedFeaturesForArea(params: {
     spatialRelationship
   );
 
+  const filteredFeatures = isLandPortLayer(params.targetLayerId)
+    ? filterLandPortFeaturesBySubtype(matchedFeatures, params.portSubtype)
+    : matchedFeatures;
+
   return {
     boundaryMatch,
-    matchedFeatures,
+    matchedFeatures: filteredFeatures,
   };
 }
 
@@ -201,6 +321,7 @@ async function findExtremeLandPortArea(params: {
   nounPlural: string;
   areaType: "division" | "district";
   extreme: "highest" | "lowest";
+  portSubtype: PortSubtype;
 }): Promise<QueryResult> {
   const boundaryLayer =
     params.areaType === "division"
@@ -236,15 +357,21 @@ async function findExtremeLandPortArea(params: {
         continue;
       }
 
-      matchedFeatures = await queryFeaturesByGeometry(
+      const queriedFeatures = await queryFeaturesByGeometry(
         params.targetLayer,
         areaFeature.geometry,
         "intersects"
       );
+
+      matchedFeatures = filterLandPortFeaturesBySubtype(
+        queriedFeatures,
+        params.portSubtype
+      );
     } else {
       matchedFeatures = await queryLandPortsByDistrictReference(
         params.targetLayer,
-        areaFeature
+        areaFeature,
+        params.portSubtype
       );
     }
 
@@ -344,9 +471,15 @@ export async function findLayerFeaturesInAdministrativeArea(
 
     await targetLayer.load();
 
-    // IMPORTANT:
-    // Handle "which division has the most ports" / "which district has the most ports"
-    // BEFORE trying to extract a normal area reference.
+    const portSubtype =
+      isLandPortLayer(targetLayerDefinition.id) ? extractPortSubtype(prompt) : null;
+
+    const subtypeNouns = getPortSubtypeNouns(
+      portSubtype,
+      targetLayerDefinition.nounSingular ?? "feature",
+      targetLayerDefinition.nounPlural ?? "features"
+    );
+
     if (isLayerExtremeAreaPrompt(prompt, targetLayerDefinition.id)) {
       const extreme = getPopulationExtreme(prompt);
       const areaType = getExtremeAreaTypeFromPrompt(prompt);
@@ -361,12 +494,70 @@ export async function findLayerFeaturesInAdministrativeArea(
           view,
           targetLayer,
           layerTitle: targetLayerDefinition.title,
-          nounSingular: targetLayerDefinition.nounSingular ?? "feature",
-          nounPlural: targetLayerDefinition.nounPlural ?? "features",
+          nounSingular: subtypeNouns.nounSingular,
+          nounPlural: subtypeNouns.nounPlural,
           areaType,
           extreme,
+          portSubtype,
         });
       }
+    }
+
+    if (isBangladeshScopePrompt(prompt)) {
+      const bangladeshResult = await queryFeaturesInBangladesh(
+        map,
+        targetLayer,
+        targetLayerDefinition.id,
+        portSubtype
+      );
+
+      if (!bangladeshResult.boundaryMatch) {
+        return {
+          ok: false,
+          message: "The Bangladesh boundary was not found in the current map.",
+          matchedLayer: targetLayerDefinition.title,
+        };
+      }
+
+      if (!bangladeshResult.matchedFeatures.length) {
+        return {
+          ok: false,
+          message: buildLayerAreaNoResultResponse({
+            nounSingular: subtypeNouns.nounSingular,
+            nounPlural: subtypeNouns.nounPlural,
+            areaDisplayLabel: bangladeshResult.areaDisplayLabel,
+            layerTitle: targetLayerDefinition.title,
+          }),
+          matchedLayer: targetLayerDefinition.title,
+        };
+      }
+
+      await zoomToFilteredResultsAndOpen({
+        map,
+        view,
+        targetLayerId: targetLayerDefinition.id,
+        targetLayer,
+        targetFeatures: bangladeshResult.matchedFeatures,
+        contextLayerId: bangladeshResult.boundaryMatch.layer.id,
+        contextLayer: bangladeshResult.boundaryMatch.layer,
+        contextFeature: bangladeshResult.boundaryMatch.feature,
+      });
+
+      return {
+        ok: true,
+        message: buildLayerAreaSuccessResponse({
+          count: bangladeshResult.matchedFeatures.length,
+          nounSingular: subtypeNouns.nounSingular,
+          nounPlural: subtypeNouns.nounPlural,
+          areaDisplayLabel: bangladeshResult.areaDisplayLabel,
+          layerTitle: targetLayerDefinition.title,
+          prompt,
+          featureLabels: getDistinctFeatureLabels(
+            bangladeshResult.matchedFeatures
+          ),
+        }),
+        matchedLayer: targetLayerDefinition.title,
+      };
     }
 
     const areaReference = extractAdministrativeAreaReference(prompt);
@@ -387,6 +578,7 @@ export async function findLayerFeaturesInAdministrativeArea(
         targetLayerId: targetLayerDefinition.id,
         areaType: areaReference.areaType,
         areaName: areaReference.areaName,
+        portSubtype,
       });
 
     if (!boundaryMatch) {
@@ -417,8 +609,8 @@ export async function findLayerFeaturesInAdministrativeArea(
       return {
         ok: false,
         message: buildLayerAreaNoResultResponse({
-          nounSingular: targetLayerDefinition.nounSingular ?? "feature",
-          nounPlural: targetLayerDefinition.nounPlural ?? "features",
+          nounSingular: subtypeNouns.nounSingular,
+          nounPlural: subtypeNouns.nounPlural,
           areaDisplayLabel,
           layerTitle: targetLayerDefinition.title,
         }),
@@ -441,8 +633,8 @@ export async function findLayerFeaturesInAdministrativeArea(
       ok: true,
       message: buildLayerAreaSuccessResponse({
         count: matchedFeatures.length,
-        nounSingular: targetLayerDefinition.nounSingular ?? "feature",
-        nounPlural: targetLayerDefinition.nounPlural ?? "features",
+        nounSingular: subtypeNouns.nounSingular,
+        nounPlural: subtypeNouns.nounPlural,
         areaDisplayLabel,
         layerTitle: targetLayerDefinition.title,
         prompt,
