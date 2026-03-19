@@ -1,8 +1,8 @@
-import AssistantDebugPanel from "./AssistantDebugPanel";
 import type { AssistantResponse } from "../../types/assistant";
 import AttributeTablePanel from "./AttributeTablePanel";
 import PromptExamples from "./PromptExamples";
 import { runAssistantPrompt } from "../../services/assistant/assistantBootstrap";
+import { useAssistantContext } from "../../context/AssistantContext";
 import { useMapView } from "../../hooks/useMapView";
 import { useState } from "react";
 
@@ -115,6 +115,8 @@ export default function AssistantPanel({
     panelMode = "normal",
 }: AssistantPanelProps) {
     const { map, view } = useMapView();
+    const { session, setLastResponse } = useAssistantContext();
+
     const [prompt, setPrompt] = useState("");
     const [result, setResult] = useState<AssistantResponse | null>(null);
     const [running, setRunning] = useState(false);
@@ -127,9 +129,11 @@ export default function AssistantPanel({
                 prompt: value,
                 map,
                 view,
+                session,
             });
 
             setResult(response);
+            setLastResponse(response);
         } finally {
             setRunning(false);
         }
@@ -273,14 +277,6 @@ export default function AssistantPanel({
                     }
                 />
             )}
-
-            {/* <AssistantDebugPanel
-                agent={result?.agent ?? ""}
-                intent={result?.intent ?? ""}
-                matchedLayer={result?.matchedLayer ?? null}
-                success={result?.success}
-                lastPrompt={result?.prompt ?? ""}
-            /> */}
         </div>
     );
 }

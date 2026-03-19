@@ -16,6 +16,7 @@ import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
 import type Geometry from "@arcgis/core/geometry/Geometry";
 import type Graphic from "@arcgis/core/Graphic";
+import type Layer from "@arcgis/core/layers/Layer";
 import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
 
@@ -348,12 +349,23 @@ export async function searchExtremeFeatureByNumericField(
   return attachFeatureContext(selectedFeature, layer);
 }
 
+function isFeatureLayer(layer: Layer | null | undefined): layer is FeatureLayer {
+  return !!layer && layer.type === "feature";
+}
+
 export function getFeatureLayerById(
   map: Map,
   layerId: string
 ): FeatureLayer | null {
-  const layer = map.layers.find((item) => item.id === layerId);
-  return layer instanceof FeatureLayer ? layer : null;
+  const topLevelMatch = map.layers.find((item) => item.id === layerId);
+  if (topLevelMatch instanceof FeatureLayer) {
+    return topLevelMatch;
+  }
+
+  const allLayers = map.allLayers?.toArray?.() ?? [];
+  const deepMatch = allLayers.find((item) => item.id === layerId);
+
+  return deepMatch instanceof FeatureLayer ? deepMatch : null;
 }
 
 export function getDistrictLayer(map: Map): FeatureLayer | null {
@@ -366,6 +378,33 @@ export function getDivisionLayer(map: Map): FeatureLayer | null {
 
 export function getUpazilaLayer(map: Map): FeatureLayer | null {
   return getFeatureLayerById(map, "upazila");
+}
+
+export function ensureLayerVisible(layer: FeatureLayer): void {
+  if (!layer.visible) {
+    layer.visible = true;
+  }
+}
+
+export function setAdministrativeLayerVisibility(
+  map: Map,
+  activeLayerId: "division" | "district" | "upazila"
+): void {
+  const adminLayerIds: Array<"division" | "district" | "upazila"> = [
+    "division",
+    "district",
+    "upazila",
+  ];
+
+  for (const layerId of adminLayerIds) {
+    const layer = getFeatureLayerById(map, layerId);
+
+    if (!layer || !isFeatureLayer(layer)) {
+      continue;
+    }
+
+    layer.visible = layerId === activeLayerId;
+  }
 }
 
 export async function findAdministrativeFeature(

@@ -1,440 +1,428 @@
+import type {
+  AdministrativeRankMetric,
+  AssistantToolCall,
+} from "./toolTypes";
 import {
-  extractAdministrativeAreaReference,
-  extractSpatialRelation,
-  isAllLayerScopePrompt,
-  isBangladeshScopePrompt,
-} from "../arcgis/query/textUtils";
-import {
-  resolveAreaQueryableLayerFromPrompt,
-  resolveSpatialQueryableLayerFromPrompt,
-  resolveSupportedLayerFromPrompt,
-} from "../../data/layerDictionary";
+  isResetMapPrompt,
+  isZoomToBangladeshPrompt,
+  resolveLayerVisibilityPrompt,
+} from "../../data/assistantHeuristics";
 
-import type { RoutedPrompt } from "../../types/assistant";
+import { normalizeText } from "../arcgis/query/textUtils";
+import { resolveSupportedLayerFromPrompt } from "../../data/layerDictionary";
 
-function normalizeText(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
-}
+const DIVISION_ALIASES: Record<string, string[]> = {
+  Rajshahi: ["rajshahi", "rajhsahi", "rajshahis"],
+  Dhaka: ["dhaka", "dhk", "dacca", "dhakas"],
+  Khulna: ["khulna", "kulna", "kulnas", "khulnas"],
+  Barisal: ["barisal", "barishal", "borisal", "borishal", "barisals", "barishals"],
+  Chittagong: ["chittagong", "chattogram", "ctg", "ctgs"],
+  Sylhet: ["sylhet", "sylet", "shylet"],
+  Rangpur: ["rangpur", "rongpur", "rangpurs"],
+};
 
-function containsAny(text: string, candidates: string[]): boolean {
-  return candidates.some((candidate) => text.includes(candidate));
-}
-
-function hasPopulationIntent(text: string): boolean {
-  return containsAny(text, [
-    "population",
-    "people",
-    "populated",
-    "inhabitants",
-    "residents",
-  ]);
-}
-
-function hasHighestIntent(text: string): boolean {
-  return containsAny(text, [
-    "highest",
-    "most",
-    "maximum",
-    "max",
-    "largest",
-    "top",
-  ]);
-}
-
-function hasLowestIntent(text: string): boolean {
-  return containsAny(text, [
-    "lowest",
-    "least",
-    "minimum",
-    "min",
-    "smallest",
-    "bottom",
-  ]);
-}
-
-function isDistrictPopulationExtremePrompt(prompt: string): boolean {
+function extractDivisionName(prompt: string): string | null {
   const normalized = normalizeText(prompt);
 
+  for (const [canonicalName, aliases] of Object.entries(DIVISION_ALIASES)) {
+    const matched = aliases.some((alias) =>
+      normalized.includes(normalizeText(alias))
+    );
+
+    if (matched) {
+      return canonicalName;
+    }
+  }
+
+  return null;
+}
+
+function wantsBiggestSingleFeature(normalized: string): boolean {
   return (
-    normalized.includes("district") &&
-    hasPopulationIntent(normalized) &&
-    (hasHighestIntent(normalized) || hasLowestIntent(normalized))
+    normalized.includes("biggest one") ||
+    normalized.includes("largest one") ||
+    normalized.includes("biggest district") ||
+    normalized.includes("largest district") ||
+    normalized.includes("zoom to the biggest") ||
+    normalized.includes("zoom to biggest") ||
+    normalized.includes("zoom to the largest") ||
+    normalized.includes("zoom to largest")
   );
 }
 
-function isDivisionPopulationExtremePrompt(prompt: string): boolean {
-  const normalized = normalizeText(prompt);
-
+function hasHighestIntent(normalized: string): boolean {
   return (
-    normalized.includes("division") &&
-    hasPopulationIntent(normalized) &&
-    (hasHighestIntent(normalized) || hasLowestIntent(normalized))
+    normalized.includes("most") ||
+    normalized.includes("highest") ||
+    normalized.includes("largest") ||
+    normalized.includes("biggest") ||
+    normalized.includes("densest")
   );
 }
 
-function isOperationalLayerAreaExtremePrompt(prompt: string): boolean {
-  const normalized = normalizeText(prompt);
-  const areaQueryableLayer = resolveAreaQueryableLayerFromPrompt(prompt);
-
-  if (!areaQueryableLayer) {
-    return false;
-  }
-
-  if (hasPopulationIntent(normalized)) {
-    return false;
-  }
-
-  const mentionsAreaType =
-    normalized.includes("division") || normalized.includes("district");
-
-  return mentionsAreaType && (hasHighestIntent(normalized) || hasLowestIntent(normalized));
+function hasLowestIntent(normalized: string): boolean {
+  return (
+    normalized.includes("least") ||
+    normalized.includes("lowest") ||
+    normalized.includes("smallest")
+  );
 }
 
-function isAttributeTablePrompt(prompt: string): boolean {
-  const normalized = normalizeText(prompt);
-
-  const tableKeyword =
-    normalized.startsWith("table ") ||
-    normalized.startsWith("list ") ||
-    normalized.startsWith("data ") ||
-    normalized.startsWith("attribute ") ||
-    normalized.startsWith("attributes ") ||
-    normalized.startsWith("records ") ||
-    normalized.startsWith("rows ") ||
-    normalized.startsWith("show me data ") ||
-    normalized.startsWith("show data ") ||
-    normalized.startsWith("show me attribute ") ||
-    normalized.startsWith("show attribute ") ||
-    normalized.startsWith("show me attribute data ") ||
-    normalized.startsWith("show me table ") ||
-    normalized.startsWith("show table ");
-
-  if (!tableKeyword) {
-    return false;
+function extractRankMetric(
+  normalized: string,
+  targetLayer: "district" | "division"
+): AdministrativeRankMetric | null {
+  if (
+    normalized.includes("dense") ||
+    normalized.includes("density") ||
+    normalized.includes("densely populated")
+  ) {
+    return "populationDensity";
   }
 
-  return resolveSupportedLayerFromPrompt(prompt) !== null;
-}
-
-function extractExplicitDistrictCandidate(prompt: string): string | null {
-  const normalized = normalizeText(prompt);
-
-  if (!normalized) return null;
-
-  if (normalized.startsWith("what is the population of district ")) {
-    return normalizeText(
-      normalized.slice("what is the population of district ".length)
-    );
+  if (
+    normalized.includes("female") ||
+    normalized.includes("women") ||
+    normalized.includes("woman")
+  ) {
+    return targetLayer === "district" ? "femalePopulation" : null;
   }
 
-  if (normalized.startsWith("population district ")) {
-    return normalizeText(normalized.slice("population district ".length));
+  if (
+    normalized.includes("male") ||
+    normalized.includes("men") ||
+    normalized.includes("man")
+  ) {
+    return targetLayer === "district" ? "malePopulation" : null;
   }
 
-  if (normalized.startsWith("people live in district ")) {
-    return normalizeText(normalized.slice("people live in district ".length));
+  if (normalized.includes("urban")) {
+    return targetLayer === "division" ? "urbanPopulation" : null;
   }
 
-  if (normalized.startsWith("show me district ")) {
-    return normalizeText(normalized.slice("show me district ".length));
+  if (normalized.includes("rural")) {
+    return targetLayer === "division" ? "ruralPopulation" : null;
   }
 
-  if (normalized.startsWith("district ")) {
-    return normalizeText(normalized.slice("district ".length));
+  if (
+    normalized.includes("population") ||
+    normalized.includes("people") ||
+    normalized.includes("lives") ||
+    normalized.includes("live")
+  ) {
+    return "totalPopulation";
   }
 
   return null;
 }
 
-function extractExplicitDivisionCandidate(prompt: string): string | null {
+function extractCompareArgs(
+  prompt: string
+): { leftName: string; rightName: string; metric?: string } | null {
   const normalized = normalizeText(prompt);
 
-  if (!normalized) return null;
-
-  if (normalized.startsWith("what is the population of division ")) {
-    return normalizeText(
-      normalized.slice("what is the population of division ".length)
-    );
-  }
-
-  if (normalized.startsWith("population division ")) {
-    return normalizeText(normalized.slice("population division ".length));
-  }
-
-  if (normalized.startsWith("people live in division ")) {
-    return normalizeText(normalized.slice("people live in division ".length));
-  }
-
-  if (normalized.startsWith("show me division ")) {
-    return normalizeText(normalized.slice("show me division ".length));
-  }
-
-  if (normalized.startsWith("division ")) {
-    return normalizeText(normalized.slice("division ".length));
-  }
-
-  return null;
-}
-
-function extractExplicitUpazilaCandidate(prompt: string): string | null {
-  const normalized = normalizeText(prompt);
-
-  if (!normalized) return null;
-
-  if (normalized.startsWith("where is upazila ")) {
-    return normalizeText(normalized.slice("where is upazila ".length));
-  }
-
-  if (normalized.startsWith("upazila ")) {
-    return normalizeText(normalized.slice("upazila ".length));
-  }
-
-  return null;
-}
-
-function extractGenericAdministrativeCandidate(prompt: string): string | null {
-  const normalized = normalizeText(prompt);
-
-  if (!normalized) {
+  if (!normalized.startsWith("compare ")) {
     return null;
   }
 
-  if (
-    normalized.includes("what layers are visible") ||
-    normalized.includes("which layers are visible") ||
-    normalized.includes("visible layers")
-  ) {
+  const withoutCompare = prompt.trim().slice(8).trim();
+  const byParts = withoutCompare.split(/\s+by\s+/i);
+  const namesPart = byParts[0]?.trim() ?? "";
+  const metricPart = byParts[1]?.trim();
+
+  const andIndex = namesPart.toLowerCase().indexOf(" and ");
+  if (andIndex < 0) {
     return null;
   }
 
-  if (normalized.includes("zoom") && normalized.includes("bangladesh")) {
+  const leftName = namesPart.slice(0, andIndex).trim();
+  const rightName = namesPart.slice(andIndex + 5).trim();
+
+  if (!leftName || !rightName) {
     return null;
-  }
-
-  if (normalized.startsWith("hide ")) {
-    return null;
-  }
-
-  if (isAttributeTablePrompt(prompt)) {
-    return null;
-  }
-
-  if (isAllLayerScopePrompt(prompt) && resolveAreaQueryableLayerFromPrompt(prompt)) {
-    return null;
-  }
-
-  if (normalized.startsWith("what is the population of ")) {
-    return normalizeText(
-      normalized.slice("what is the population of ".length)
-    );
-  }
-
-  if (normalized.startsWith("population ")) {
-    return normalizeText(normalized.slice("population ".length));
-  }
-
-  if (normalized.startsWith("people live in ")) {
-    return normalizeText(normalized.slice("people live in ".length));
-  }
-
-  if (normalized.startsWith("where is ")) {
-    return normalizeText(normalized.slice("where is ".length));
-  }
-
-  if (normalized.startsWith("where ")) {
-    return normalizeText(normalized.slice("where ".length));
-  }
-
-  if (normalized.startsWith("show ")) {
-    const afterShow = normalizeText(normalized.slice(5));
-
-    if (resolveSupportedLayerFromPrompt(afterShow)) {
-      return null;
-    }
-
-    if (afterShow.startsWith("me ")) {
-      const candidate = normalizeText(afterShow.slice(3));
-      return candidate || null;
-    }
-
-    return afterShow || null;
-  }
-
-  return normalized;
-}
-
-export function routePrompt(prompt: string): RoutedPrompt {
-  const normalized = normalizeText(prompt);
-
-  if (!normalized) {
-    return {
-      prompt,
-      normalized,
-      agent: "system",
-      intent: "unknown",
-    };
-  }
-
-  if (
-    normalized.includes("what layers are visible") ||
-    normalized.includes("which layers are visible") ||
-    normalized.includes("visible layers")
-  ) {
-    return {
-      prompt,
-      normalized,
-      agent: "summaryAgent",
-      intent: "listVisibleLayers",
-    };
-  }
-
-  if (normalized.includes("zoom") && normalized.includes("bangladesh")) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "zoomToBangladesh",
-    };
-  }
-
-  if (isAttributeTablePrompt(prompt)) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "showAttributeTable",
-    };
-  }
-
-  const administrativeAreaReference = extractAdministrativeAreaReference(prompt);
-  const spatialRelation = extractSpatialRelation(prompt);
-  const spatialLayer = resolveSpatialQueryableLayerFromPrompt(prompt);
-
-  if (administrativeAreaReference && spatialRelation && spatialLayer) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "findLayerBySpatialRelation",
-    };
-  }
-
-  const areaQueryableLayer = resolveAreaQueryableLayerFromPrompt(prompt);
-
-  if (
-    (administrativeAreaReference && areaQueryableLayer) ||
-    (isBangladeshScopePrompt(prompt) && areaQueryableLayer)
-  ) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "findLayerInArea",
-    };
-  }
-
-  if (!administrativeAreaReference && isOperationalLayerAreaExtremePrompt(prompt)) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "findLayerInArea",
-    };
-  }
-
-  if (normalized.startsWith("show ")) {
-    const afterShow = normalizeText(normalized.slice(5));
-
-    if (resolveSupportedLayerFromPrompt(afterShow)) {
-      return {
-        prompt,
-        normalized,
-        agent: "layerControlAgent",
-        intent: "showLayer",
-      };
-    }
-  }
-
-  if (normalized.startsWith("hide ")) {
-    const afterHide = normalizeText(normalized.slice(5));
-
-    if (resolveSupportedLayerFromPrompt(afterHide)) {
-      return {
-        prompt,
-        normalized,
-        agent: "layerControlAgent",
-        intent: "hideLayer",
-      };
-    }
-  }
-
-  if (isDivisionPopulationExtremePrompt(prompt)) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "zoomToDivision",
-    };
-  }
-
-  if (isDistrictPopulationExtremePrompt(prompt)) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "zoomToDistrict",
-    };
-  }
-
-  const explicitUpazilaCandidate = extractExplicitUpazilaCandidate(prompt);
-
-  if (explicitUpazilaCandidate) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "zoomToUpazila",
-    };
-  }
-
-  const explicitDivisionCandidate = extractExplicitDivisionCandidate(prompt);
-
-  if (explicitDivisionCandidate) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "zoomToDivision",
-    };
-  }
-
-  const explicitDistrictCandidate = extractExplicitDistrictCandidate(prompt);
-
-  if (explicitDistrictCandidate) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "zoomToDistrict",
-    };
-  }
-
-  const genericAdministrativeCandidate =
-    extractGenericAdministrativeCandidate(prompt);
-
-  if (genericAdministrativeCandidate) {
-    return {
-      prompt,
-      normalized,
-      agent: "bangladeshAdminAgent",
-      intent: "zoomToAdministrativeArea",
-    };
   }
 
   return {
-    prompt,
-    normalized,
-    agent: "fallback",
-    intent: "unknown",
+    leftName,
+    rightName,
+    metric: metricPart,
   };
+}
+
+function extractWeatherTargetName(prompt: string): string | undefined {
+  const normalized = normalizeText(prompt);
+
+  const patterns = [
+    "show weather in ",
+    "weather in ",
+    "get weather in ",
+    "weather at ",
+    "weather for ",
+  ];
+
+  for (const pattern of patterns) {
+    if (normalized.startsWith(pattern)) {
+      return prompt.trim().slice(pattern.length).trim();
+    }
+  }
+
+  return undefined;
+}
+
+function buildDistrictInDivisionPlan(
+  divisionName: string,
+  shouldOpenTable: boolean,
+  shouldZoomToBiggest: boolean
+): AssistantToolCall[] {
+  const plan: AssistantToolCall[] = [
+    {
+      tool: "queryAdministrativeLayer",
+      args: {
+        layerId: "district",
+        parentName: divisionName,
+      },
+    },
+  ];
+
+  if (shouldOpenTable) {
+    plan.push({
+      tool: "openAttributeTable",
+      args: {
+        source: "lastQueryResult",
+      },
+    });
+  }
+
+  if (shouldZoomToBiggest) {
+    plan.push(
+      {
+        tool: "zoomToFeature",
+        args: {
+          source: "largestFromLastQueryResult",
+        },
+      },
+      {
+        tool: "highlightFeature",
+        args: {
+          source: "largestFromLastQueryResult",
+        },
+      }
+    );
+
+    return plan;
+  }
+
+  plan.push(
+    {
+      tool: "zoomToFeature",
+      args: {
+        source: "lastQueryResult",
+      },
+    },
+    {
+      tool: "highlightFeature",
+      args: {
+        source: "lastQueryResult",
+      },
+    }
+  );
+
+  return plan;
+}
+
+function buildAdministrativeRankingPlan(
+  layerId: "district" | "division",
+  metric: AdministrativeRankMetric,
+  normalized: string,
+  parentName?: string
+): AssistantToolCall[] {
+  return [
+    {
+      tool: "rankAdministrativeRegions",
+      args: {
+        layerId,
+        metric,
+        parentName,
+        rank: hasLowestIntent(normalized) ? "lowest" : "highest",
+        zoomToResult: true,
+        highlightResult: true,
+        openPopup: true,
+      },
+    },
+  ];
+}
+
+export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
+  const normalized = normalizeText(prompt);
+  const divisionName = extractDivisionName(prompt);
+
+  const layerVisibilityMatch = resolveLayerVisibilityPrompt(prompt);
+  if (layerVisibilityMatch) {
+    return [
+      {
+        tool: "setLayerVisibility",
+        args: {
+          layerIds: layerVisibilityMatch.layerIds,
+          visible: layerVisibilityMatch.action === "show",
+        },
+      },
+    ];
+  }
+
+  if (isResetMapPrompt(prompt)) {
+    return [
+      {
+        tool: "resetMap",
+        args: {
+          zoomToBangladesh: true,
+        },
+      },
+    ];
+  }
+
+  if (isZoomToBangladeshPrompt(prompt)) {
+    return [
+      {
+        tool: "zoomToBangladesh",
+        args: {
+          includeBoundaryLayer: true,
+        },
+      },
+    ];
+  }
+
+  const compareArgs = extractCompareArgs(prompt);
+  if (compareArgs) {
+    return [
+      {
+        tool: "compareRegions",
+        args: compareArgs,
+      },
+    ];
+  }
+
+  if (normalized.includes("nearest")) {
+    const matchedLayer = resolveSupportedLayerFromPrompt(prompt);
+    if (matchedLayer) {
+      return [
+        {
+          tool: "findNearestFeature",
+          args: {
+            layerId: matchedLayer.id,
+            useMapPoint: true,
+          },
+        },
+      ];
+    }
+  }
+
+  if (
+    normalized.includes("weather") &&
+    !normalized.startsWith("show weather") &&
+    !normalized.startsWith("hide weather")
+  ) {
+    return [
+      {
+        tool: "getWeatherContext",
+        args: {
+          targetName: extractWeatherTargetName(prompt),
+          useMapCenter: true,
+        },
+      },
+    ];
+  }
+
+  if (
+    normalized.includes("summarize") &&
+    normalized.includes("visible") &&
+    normalized.includes("map")
+  ) {
+    return [
+      {
+        tool: "summarizeVisibleMap",
+        args: { includeCounts: true },
+      },
+    ];
+  }
+
+  if (divisionName && normalized.includes("district") && normalized.includes("division")) {
+    const shouldOpenTable =
+      normalized.includes("open table") ||
+      normalized.includes("open the table") ||
+      normalized.includes("show table") ||
+      normalized.includes("table");
+
+    const shouldZoomToBiggest = wantsBiggestSingleFeature(normalized);
+
+    if (!shouldZoomToBiggest) {
+      const metric = extractRankMetric(normalized, "district");
+      if (metric && (hasHighestIntent(normalized) || hasLowestIntent(normalized))) {
+        return buildAdministrativeRankingPlan(
+          "district",
+          metric,
+          normalized,
+          divisionName
+        );
+      }
+    }
+
+    return buildDistrictInDivisionPlan(
+      divisionName,
+      shouldOpenTable,
+      shouldZoomToBiggest
+    );
+  }
+
+  if (normalized.includes("district")) {
+    const metric = extractRankMetric(normalized, "district");
+    if (metric && (hasHighestIntent(normalized) || hasLowestIntent(normalized))) {
+      return buildAdministrativeRankingPlan("district", metric, normalized);
+    }
+  }
+
+  if (normalized.includes("division")) {
+    const metric = extractRankMetric(normalized, "division");
+    if (metric && (hasHighestIntent(normalized) || hasLowestIntent(normalized))) {
+      return buildAdministrativeRankingPlan("division", metric, normalized);
+    }
+  }
+
+  if (
+    normalized.includes("most dense district") ||
+    normalized.includes("highest density district") ||
+    normalized.includes("which district seems most dense") ||
+    normalized.includes("which district is most densely populated")
+  ) {
+    return buildAdministrativeRankingPlan(
+      "district",
+      "populationDensity",
+      normalized
+    );
+  }
+
+  if (
+    normalized.includes("most dense division") ||
+    normalized.includes("highest density division") ||
+    normalized.includes("which division seems most dense") ||
+    normalized.includes("which division is most densely populated")
+  ) {
+    return buildAdministrativeRankingPlan(
+      "division",
+      "populationDensity",
+      normalized
+    );
+  }
+
+  if (normalized.includes("open") && normalized.includes("table")) {
+    return [
+      {
+        tool: "openAttributeTable",
+        args: {
+          source: "lastQueryResult",
+        },
+      },
+    ];
+  }
+
+  return [];
 }

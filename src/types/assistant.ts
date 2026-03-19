@@ -3,7 +3,8 @@ export type AssistantAgent =
   | "layerControlAgent"
   | "summaryAgent"
   | "bangladeshAdminAgent"
-  | "fallback";
+  | "fallback"
+  | "toolBasedAssistant";
 
 export type AssistantIntent =
   | "showLayer"
@@ -17,6 +18,7 @@ export type AssistantIntent =
   | "findLayerInArea"
   | "findLayerBySpatialRelation"
   | "showAttributeTable"
+  | "toolExecution"
   | "unknown";
 
 export type AssistantEntityType =
@@ -43,6 +45,7 @@ export interface AssistantResponseMeta {
   metricValue?: string | number;
   rankDirection?: AssistantRankDirection;
   details?: Record<string, string | number>;
+  toolResults?: unknown[];
 }
 
 export interface AssistantAttributeTable {
