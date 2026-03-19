@@ -37,5 +37,16 @@ export const promptExamples = [
   "all land ports",
   "all tolls",
   "all airports",
-  "all rivers"
+  "all rivers",
+  "table river",
+  "show me attribute data district",
+  "show me data upazila",
+  "data port",
+  "data land port",
+  "data sea port",
+  "data airport",
+  "list airport",
+  "table national highway",
+  "table railways",
+  "data railway"
 ];

@@ -1,5 +1,6 @@
 import AssistantDebugPanel from "./AssistantDebugPanel";
 import type { AssistantResponse } from "../../types/assistant";
+import AttributeTablePanel from "./AttributeTablePanel";
 import PromptExamples from "./PromptExamples";
 import { runAssistantPrompt } from "../../services/assistant/assistantBootstrap";
 import { useMapView } from "../../hooks/useMapView";
@@ -174,7 +175,7 @@ export default function AssistantPanel({
                         lineHeight: 1.5,
                     }}
                 >
-                    Ask the map to zoom, show layers, or find areas by population.
+                    Ask the map to zoom, show layers, find areas, or open attribute tables.
                 </div>
 
                 <textarea
@@ -231,7 +232,9 @@ export default function AssistantPanel({
                     borderRadius: "16px",
                     padding: "14px",
                     background: "#ffffff",
-                    boxShadow: result ? "0 12px 32px rgba(15, 23, 42, 0.06)" : "0 6px 18px rgba(15, 23, 42, 0.03)",
+                    boxShadow: result
+                        ? "0 12px 32px rgba(15, 23, 42, 0.06)"
+                        : "0 6px 18px rgba(15, 23, 42, 0.03)",
                 }}
             >
                 <div
@@ -254,6 +257,22 @@ export default function AssistantPanel({
                     </div>
                 )}
             </div>
+
+            {result?.attributeTable && (
+                <AttributeTablePanel
+                    table={result.attributeTable}
+                    onClose={() =>
+                        setResult((prev) =>
+                            prev
+                                ? {
+                                    ...prev,
+                                    attributeTable: null,
+                                }
+                                : null
+                        )
+                    }
+                />
+            )}
 
             <AssistantDebugPanel
                 agent={result?.agent ?? ""}

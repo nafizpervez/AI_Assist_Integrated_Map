@@ -16,6 +16,7 @@ export type AssistantIntent =
   | "zoomToAdministrativeArea"
   | "findLayerInArea"
   | "findLayerBySpatialRelation"
+  | "showAttributeTable"
   | "unknown";
 
 export type AssistantEntityType =
@@ -44,6 +45,15 @@ export interface AssistantResponseMeta {
   details?: Record<string, string | number>;
 }
 
+export interface AssistantAttributeTable {
+  title: string;
+  layerId: string;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  totalCount: number;
+  shownCount: number;
+}
+
 export interface RoutedPrompt {
   prompt: string;
   normalized: string;
@@ -59,4 +69,5 @@ export interface AssistantResponse {
   success: boolean;
   matchedLayer?: string | null;
   meta?: AssistantResponseMeta | null;
+  attributeTable?: AssistantAttributeTable | null;
 }

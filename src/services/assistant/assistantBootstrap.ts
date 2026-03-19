@@ -3,6 +3,7 @@ import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
 import { formatAssistantResponse } from "./responseFormatter";
 import { routePrompt } from "./intentRouter";
+import { runAttributeTablePrompt } from "./attributeTableRunner";
 import { runBangladeshAdminAgent } from "./agents/bangladeshAdminAgent";
 import { runLayerControlAgent } from "./agents/layerControlAgent";
 import { runSummaryAgent } from "./agents/summaryAgent";
@@ -28,6 +29,14 @@ export async function runAssistantPrompt({
       intent: "unknown",
       success: false,
       matchedLayer: null,
+    });
+  }
+
+  if (routed.intent === "showAttributeTable") {
+    return runAttributeTablePrompt({
+      prompt,
+      map,
+      view,
     });
   }
 
@@ -65,7 +74,7 @@ export async function runAssistantPrompt({
   return formatAssistantResponse({
     prompt,
     answer:
-      'I understood the prompt, but I do not support that command yet. Try: "show airports", "district nilphamari", "division khulna", "upazila savar", "where is the airport at khulna division", or "which rivers are near rajshahi division".',
+      'I understood the prompt, but I do not support that command yet. Try: "show airports", "district nilphamari", "division khulna", "upazila savar", "where is the airport at khulna division", "which rivers are near rajshahi division", or "table river".',
     agent: "fallback",
     intent: "unknown",
     success: false,

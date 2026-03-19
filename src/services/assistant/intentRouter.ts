@@ -90,6 +90,32 @@ function isOperationalLayerAreaExtremePrompt(prompt: string): boolean {
   return mentionsAreaType && (hasHighestIntent(normalized) || hasLowestIntent(normalized));
 }
 
+function isAttributeTablePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  const tableKeyword =
+    normalized.startsWith("table ") ||
+    normalized.startsWith("list ") ||
+    normalized.startsWith("data ") ||
+    normalized.startsWith("attribute ") ||
+    normalized.startsWith("attributes ") ||
+    normalized.startsWith("records ") ||
+    normalized.startsWith("rows ") ||
+    normalized.startsWith("show me data ") ||
+    normalized.startsWith("show data ") ||
+    normalized.startsWith("show me attribute ") ||
+    normalized.startsWith("show attribute ") ||
+    normalized.startsWith("show me attribute data ") ||
+    normalized.startsWith("show me table ") ||
+    normalized.startsWith("show table ");
+
+  if (!tableKeyword) {
+    return false;
+  }
+
+  return resolveSupportedLayerFromPrompt(prompt) !== null;
+}
+
 function extractExplicitDistrictCandidate(prompt: string): string | null {
   const normalized = normalizeText(prompt);
 
@@ -189,6 +215,10 @@ function extractGenericAdministrativeCandidate(prompt: string): string | null {
     return null;
   }
 
+  if (isAttributeTablePrompt(prompt)) {
+    return null;
+  }
+
   if (isAllLayerScopePrompt(prompt) && resolveAreaQueryableLayerFromPrompt(prompt)) {
     return null;
   }
@@ -264,6 +294,15 @@ export function routePrompt(prompt: string): RoutedPrompt {
       normalized,
       agent: "bangladeshAdminAgent",
       intent: "zoomToBangladesh",
+    };
+  }
+
+  if (isAttributeTablePrompt(prompt)) {
+    return {
+      prompt,
+      normalized,
+      agent: "bangladeshAdminAgent",
+      intent: "showAttributeTable",
     };
   }
 
