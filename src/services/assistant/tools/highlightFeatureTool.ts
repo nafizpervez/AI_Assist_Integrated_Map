@@ -119,6 +119,29 @@ function findLargestFeature(
   };
 }
 
+function resolveLayerAndObjectIds(
+  args: HighlightFeatureArgs,
+  session: AssistantExecutionContext["session"]
+): { layerId?: string; objectIds: number[] } {
+  let layerId = args.layerId;
+  let objectIds: number[] = [];
+
+  if (
+    args.source === "lastQueryResult" ||
+    args.source === "largestFromLastQueryResult"
+  ) {
+    layerId = session.lastQueryResult?.layerId ?? session.lastSelectedFeature?.layerId;
+    objectIds =
+      session.lastQueryResult?.objectIds ??
+      session.lastSelectedFeature?.objectIds ??
+      [];
+  } else if (typeof args.objectId === "number") {
+    objectIds = [args.objectId];
+  }
+
+  return { layerId, objectIds };
+}
+
 export async function highlightFeatureTool(
   rawArgs: AssistantToolArgs,
   context: AssistantExecutionContext,
@@ -134,18 +157,9 @@ export async function highlightFeatureTool(
     };
   }
 
-  let layerId = args.layerId;
-  let objectIds: number[] = [];
-
-  if (args.source === "lastQueryResult") {
-    layerId = session.lastQueryResult?.layerId;
-    objectIds = session.lastQueryResult?.objectIds ?? [];
-  } else if (args.source === "largestFromLastQueryResult") {
-    layerId = session.lastQueryResult?.layerId;
-    objectIds = session.lastQueryResult?.objectIds ?? [];
-  } else if (typeof args.objectId === "number") {
-    objectIds = [args.objectId];
-  }
+  const resolved = resolveLayerAndObjectIds(args, session);
+  const layerId = resolved.layerId;
+  const objectIds = resolved.objectIds;
 
   if (!layerId) {
     return {

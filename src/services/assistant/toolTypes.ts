@@ -21,6 +21,9 @@ export interface QueryAdministrativeLayerArgs {
   parentName?: string;
   targetName?: string;
   where?: string;
+  withinName?: string;
+  withinTypes?: Array<"division" | "district" | "upazila">;
+  spatialRelationship?: "inside" | "intersects";
 }
 
 export interface FindAdministrativeFeatureArgs {
@@ -48,6 +51,8 @@ export interface HighlightFeatureArgs {
 export interface FindNearestFeatureArgs {
   layerId: string;
   useMapPoint?: boolean;
+  targetName?: string;
+  preferredAdminTypes?: Array<"division" | "district" | "upazila">;
 }
 
 export interface CompareRegionsArgs {
@@ -136,12 +141,30 @@ export interface AssistantQueryResultData {
   objectIds: number[];
 }
 
+export interface AssistantMultiLayerQueryItem {
+  layerId: string;
+  title: string;
+  totalCount: number;
+  objectIds: number[];
+  columns: string[];
+  rows: AssistantQueryRow[];
+}
+
+export interface AssistantMultiLayerQueryResultData {
+  scopeName?: string;
+  scopeLayerId?: string;
+  items: AssistantMultiLayerQueryItem[];
+  totalLayerCount: number;
+  totalFeatureCount: number;
+}
+
 export interface AssistantHighlightHandle {
   remove: () => void;
 }
 
 export interface AssistantSessionState {
   lastQueryResult: AssistantQueryResultData | null;
+  lastMultiLayerQueryResult: AssistantMultiLayerQueryResultData | null;
   lastAttributeTable: unknown | null;
   lastSelectedFeature: {
     layerId: string;

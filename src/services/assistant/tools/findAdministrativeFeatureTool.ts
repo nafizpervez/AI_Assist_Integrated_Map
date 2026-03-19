@@ -7,12 +7,8 @@ import type {
   FindAdministrativeFeatureArgs,
 } from "../toolTypes";
 import {
-  getDistrictLayer,
-  getDivisionLayer,
+  findAdministrativeFeature,
   getFeatureObjectId,
-  getUpazilaLayer,
-  searchFeatureByField,
-  searchFeatureByFields,
   setAdministrativeLayerVisibility,
 } from "../../arcgis/query/featureSearch";
 import {
@@ -20,6 +16,7 @@ import {
   normalizePlaceName,
 } from "../../arcgis/query/textUtils";
 
+import type { AdminLevel } from "../../arcgis/query/types";
 import type FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type Graphic from "@arcgis/core/Graphic";
 
@@ -73,6 +70,12 @@ function buildSingleFeatureResult(
   };
 }
 
+function toAdminLabel(areaType: AdminLevel): string {
+  if (areaType === "division") return "Division";
+  if (areaType === "district") return "District";
+  return "Upazila";
+}
+
 export async function findAdministrativeFeatureTool(
   rawArgs: AssistantToolArgs,
   context: AssistantExecutionContext,
@@ -97,83 +100,32 @@ export async function findAdministrativeFeatureTool(
     };
   }
 
-  const searchPriority =
+  const searchPriority: AdminLevel[] =
     args.preferredTypes && args.preferredTypes.length
-      ? args.preferredTypes
+      ? [...args.preferredTypes]
       : getGenericSearchPriority(prompt);
 
   try {
     for (const areaType of searchPriority) {
-      if (areaType === "division") {
-        const layer = getDivisionLayer(map);
-        if (!layer) continue;
+      const matched = await findAdministrativeFeature(map, areaType, targetName);
 
-        const feature = await searchFeatureByField(layer, "name_1", targetName);
-        if (feature) {
-          setAdministrativeLayerVisibility(map, "division");
-
-          const resultData = buildSingleFeatureResult(layer, feature);
-          session.lastQueryResult = resultData;
-          session.lastSelectedFeature = {
-            layerId: resultData.layerId,
-            objectIds: resultData.objectIds,
-          };
-
-          return {
-            message: `Found Division: ${targetName}.`,
-            data: resultData,
-          };
-        }
+      if (!matched) {
+        continue;
       }
 
-      if (areaType === "district") {
-        const layer = getDistrictLayer(map);
-        if (!layer) continue;
+      setAdministrativeLayerVisibility(map, areaType);
 
-        const feature = await searchFeatureByField(layer, "name_2", targetName);
-        if (feature) {
-          setAdministrativeLayerVisibility(map, "district");
+      const resultData = buildSingleFeatureResult(matched.layer, matched.feature);
+      session.lastQueryResult = resultData;
+      session.lastSelectedFeature = {
+        layerId: resultData.layerId,
+        objectIds: resultData.objectIds,
+      };
 
-          const resultData = buildSingleFeatureResult(layer, feature);
-          session.lastQueryResult = resultData;
-          session.lastSelectedFeature = {
-            layerId: resultData.layerId,
-            objectIds: resultData.objectIds,
-          };
-
-          return {
-            message: `Found District: ${targetName}.`,
-            data: resultData,
-          };
-        }
-      }
-
-      if (areaType === "upazila") {
-        const layer = getUpazilaLayer(map);
-        if (!layer) continue;
-
-        const feature = await searchFeatureByFields(
-          layer,
-          ["name_3", "upazila_name", "upazila", "name", "name_en"],
-          targetName
-        );
-
-        if (feature) {
-          setAdministrativeLayerVisibility(map, "upazila");
-
-          const resultData = buildSingleFeatureResult(layer, feature);
-          session.lastQueryResult = resultData;
-          session.lastSelectedFeature = {
-            layerId: resultData.layerId,
-            objectIds: resultData.objectIds,
-          };
-
-          return {
-            message: `Found Upazila: ${targetName}.`,
-            data: resultData,
-          };
-        }
-      }
+      return {
+        message: `Found ${toAdminLabel(areaType)}: ${targetName}.`,
+        data: resultData,
+      };
     }
 
     return {

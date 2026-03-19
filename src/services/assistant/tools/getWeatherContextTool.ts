@@ -7,20 +7,23 @@ import type {
   GetWeatherContextArgs,
 } from "../toolTypes";
 import {
+  findAdministrativeFeature,
   getAttributeValueCaseInsensitive,
   getFeatureDisplayLabel,
   getFeatureLayerById,
   queryAllFeatures,
 } from "../../arcgis/query/featureSearch";
+import { normalizePlaceName, normalizeText } from "../../arcgis/query/textUtils";
 
+import type { AdminLevel } from "../../arcgis/query/types";
 import type Graphic from "@arcgis/core/Graphic";
 import Point from "@arcgis/core/geometry/Point";
-import { normalizeText } from "../../arcgis/query/textUtils";
 
-// import type FeatureLayer from "@arcgis/core/layers/FeatureLayer";
-
-
-
+const DEFAULT_ADMIN_PRIORITY: AdminLevel[] = [
+  "division",
+  "district",
+  "upazila",
+];
 
 function getReferencePoint(context: AssistantExecutionContext): Point | null {
   const { session, view } = context;
@@ -35,6 +38,43 @@ function getReferencePoint(context: AssistantExecutionContext): Point | null {
 
   if (view?.center) {
     return view.center.clone();
+  }
+
+  return null;
+}
+
+async function getReferencePointFromTargetName(
+  context: AssistantExecutionContext,
+  targetName: string
+): Promise<Point | null> {
+  const { map } = context;
+
+  if (!map) {
+    return null;
+  }
+
+  const normalizedTarget = normalizePlaceName(targetName);
+
+  for (const areaType of DEFAULT_ADMIN_PRIORITY) {
+    const matched = await findAdministrativeFeature(map, areaType, normalizedTarget);
+
+    if (!matched?.feature?.geometry) {
+      continue;
+    }
+
+    const geometry = matched.feature.geometry;
+
+    if (geometry.type === "point") {
+      return geometry as Point;
+    }
+
+    if ("centroid" in geometry && geometry.centroid) {
+      return geometry.centroid;
+    }
+
+    if ("extent" in geometry && geometry.extent) {
+      return geometry.extent.center;
+    }
   }
 
   return null;
@@ -113,10 +153,10 @@ function buildWeatherSummary(feature: Graphic): string[] {
 }
 
 function matchesTargetName(feature: Graphic, targetName: string): boolean {
-  const normalizedTarget = normalizeText(targetName);
+  const normalizedTarget = normalizeText(normalizePlaceName(targetName));
   const label = normalizeText(getFeatureDisplayLabel(feature));
 
-  if (label.includes(normalizedTarget)) {
+  if (label.includes(normalizedTarget) || normalizedTarget.includes(label)) {
     return true;
   }
 
@@ -135,7 +175,10 @@ function matchesTargetName(feature: Graphic, targetName: string): boolean {
   for (const field of candidates) {
     const raw = getAttributeValueCaseInsensitive(feature, [field]);
     const value = normalizeText(String(raw ?? ""));
-    if (value.includes(normalizedTarget)) {
+    if (
+      value.includes(normalizedTarget) ||
+      normalizedTarget.includes(value)
+    ) {
       return true;
     }
   }
@@ -227,6 +270,21 @@ export async function getWeatherContextTool(
       selectedFeature =
         features.find((feature) => matchesTargetName(feature, args.targetName ?? "")) ??
         null;
+
+      if (!selectedFeature) {
+        const targetPoint = await getReferencePointFromTargetName(
+          context,
+          args.targetName
+        );
+
+        if (targetPoint) {
+          const nearest = findNearestWeatherFeature(features, targetPoint);
+          if (nearest) {
+            selectedFeature = nearest.feature;
+            distanceKm = nearest.distanceKm;
+          }
+        }
+      }
     }
 
     if (!selectedFeature) {
@@ -252,7 +310,9 @@ export async function getWeatherContextTool(
       distanceKm = nearest.distanceKm;
     }
 
-    await view.goTo(selectedFeature);
+    await view.goTo(selectedFeature, {
+      duration: 900,
+    });
     await view.openPopup({
       features: [selectedFeature],
     });

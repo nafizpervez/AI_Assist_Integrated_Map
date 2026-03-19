@@ -7,16 +7,25 @@ import type {
   QueryAdministrativeLayerArgs,
 } from "../toolTypes";
 import {
+  findAdministrativeFeature,
   getFeatureLayerById,
   queryAllFeatures,
+  queryFeaturesByGeometry,
 } from "../../arcgis/query/featureSearch";
 import { normalizePlaceName, normalizeText } from "../../arcgis/query/textUtils";
 
+import type { AdminLevel } from "../../arcgis/query/types";
 import type FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type Graphic from "@arcgis/core/Graphic";
 import type Layer from "@arcgis/core/layers/Layer";
 import type Map from "@arcgis/core/Map";
 import { similarityScore } from "../../../utils/fuzzy";
+
+const DEFAULT_ADMIN_TYPES: AdminLevel[] = [
+  "division",
+  "district",
+  "upazila",
+];
 
 function normalizeTableValue(
   value: unknown
@@ -227,6 +236,34 @@ function getGraphicObjectId(
   return null;
 }
 
+async function resolveBoundaryFeatures(
+  map: Map,
+  args: QueryAdministrativeLayerArgs
+): Promise<Graphic[] | null> {
+  if (!args.withinName) {
+    return null;
+  }
+
+  const preferredTypes: AdminLevel[] =
+    args.withinTypes && args.withinTypes.length
+      ? [...args.withinTypes]
+      : DEFAULT_ADMIN_TYPES;
+
+  for (const areaType of preferredTypes) {
+    const match = await findAdministrativeFeature(
+      map,
+      areaType,
+      args.withinName
+    );
+
+    if (match?.feature?.geometry) {
+      return [match.feature];
+    }
+  }
+
+  return [];
+}
+
 export async function queryAdministrativeLayerTool(
   rawArgs: AssistantToolArgs,
   context: AssistantExecutionContext,
@@ -253,9 +290,39 @@ export async function queryAdministrativeLayerTool(
 
   try {
     await layer.load();
+    layer.visible = true;
 
-    const allFeatures = await queryAllFeatures(layer);
-    const filteredFeatures = allFeatures.filter((feature) =>
+    let candidateFeatures: Graphic[] = [];
+
+    if (args.withinName) {
+      const boundaryFeatures = await resolveBoundaryFeatures(map, args);
+
+      if (!boundaryFeatures || !boundaryFeatures.length) {
+        return {
+          message: `No administrative area matched "${args.withinName}".`,
+          data: null,
+        };
+      }
+
+      const boundaryGeometry = boundaryFeatures[0].geometry;
+
+      if (!boundaryGeometry) {
+        return {
+          message: `The boundary for "${args.withinName}" has no geometry.`,
+          data: null,
+        };
+      }
+
+      candidateFeatures = await queryFeaturesByGeometry(
+        layer,
+        boundaryGeometry,
+        args.spatialRelationship === "inside" ? "within" : "intersects"
+      );
+    } else {
+      candidateFeatures = await queryAllFeatures(layer);
+    }
+
+    const filteredFeatures = candidateFeatures.filter((feature) =>
       featureMatchesArgs(feature, args)
     );
 
@@ -292,11 +359,17 @@ export async function queryAdministrativeLayerTool(
       message = `Found ${filteredRows.length} ${args.layerId} record(s) in ${args.parentName}.`;
     }
 
+    if (args.withinName) {
+      message = `Found ${filteredRows.length} ${args.layerId} record(s) in ${args.withinName}.`;
+    }
+
     if (args.targetName && filteredRows.length === 1) {
       message = `Found 1 matching record in ${resultData.title} for ${args.targetName}.`;
     }
 
-    if (!filteredRows.length) {
+    if (!filteredRows.length && args.withinName) {
+      message = `No ${args.layerId} records were found in ${args.withinName}.`;
+    } else if (!filteredRows.length) {
       message = `No ${args.layerId} records matched your request.`;
     }
 

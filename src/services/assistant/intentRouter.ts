@@ -12,7 +12,10 @@ import {
   isZoomToBangladeshPrompt,
   resolveLayerVisibilityPrompt,
 } from "../../data/assistantHeuristics";
-import { resolveSupportedLayerFromPrompt, supportedLayers } from "../../data/layerDictionary";
+import {
+  resolveSupportedLayerFromPrompt,
+  supportedLayers,
+} from "../../data/layerDictionary";
 
 import { findBestFuzzyMatch } from "../../utils/fuzzy";
 
@@ -25,6 +28,15 @@ const DIVISION_ALIASES: Record<string, string[]> = {
   Sylhet: ["sylhet", "sylet", "shylet"],
   Rangpur: ["rangpur", "rongpur", "rangpurs"],
 };
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function includesAlias(text: string, alias: string): boolean {
+  const pattern = new RegExp(`(^|\\b)${escapeRegExp(normalizeText(alias))}(\\b|$)`, "i");
+  return pattern.test(text);
+}
 
 function extractDivisionName(prompt: string): string | null {
   const normalized = normalizeText(prompt);
@@ -366,6 +378,217 @@ function isGenericAdministrativeLocationPrompt(normalized: string): boolean {
   );
 }
 
+function hasOperationalAreaIntent(normalized: string): boolean {
+  return (
+    normalized.startsWith("show ") ||
+    normalized.startsWith("display ") ||
+    normalized.startsWith("find ") ||
+    normalized.startsWith("in ") ||
+    normalized.startsWith("within ") ||
+    normalized.includes(" inside ") ||
+    normalized.includes(" within ") ||
+    normalized.includes(" in ")
+  );
+}
+
+function inferPreferredTypesFromAreaText(
+  areaText: string
+): Array<"division" | "district" | "upazila"> {
+  const normalized = normalizeText(areaText);
+
+  if (normalized.includes("upazila") || normalized.includes("thana")) {
+    return ["upazila", "district", "division"];
+  }
+
+  if (normalized.includes("district") || normalized.includes("zila")) {
+    return ["district", "division", "upazila"];
+  }
+
+  if (normalized.includes("division") || normalized.includes("bibhag")) {
+    return ["division", "district", "upazila"];
+  }
+
+  return ["division", "district", "upazila"];
+}
+
+function cleanAreaText(raw: string): string {
+  let value = raw.trim();
+
+  value = value.replace(/^(this place|that place|the place)$/i, "");
+  value = value.replace(/^(this place|that place|the place)\s+/i, "");
+  value = value.replace(/\s+(show|show me|display|find|get)\b.*$/i, "");
+  value = value.replace(/\s+(with|and then|then)\s+.*$/i, "");
+  value = value.replace(/[?.!,]+$/g, "");
+
+  return normalizePlaceName(value);
+}
+
+function extractAreaConstraint(
+  prompt: string
+): { targetName: string; preferredTypes: Array<"division" | "district" | "upazila"> } | null {
+  const trimmed = prompt.trim();
+  const normalized = normalizeText(trimmed);
+
+  const prefixMatch = trimmed.match(
+    /^\s*(in|within)\s+(.+?)\s+(show|show me|display|find|get)\b/i
+  );
+
+  if (prefixMatch) {
+    const rawArea = prefixMatch[2]?.trim() ?? "";
+    const targetName = cleanAreaText(rawArea);
+
+    if (targetName) {
+      return {
+        targetName,
+        preferredTypes: inferPreferredTypesFromAreaText(rawArea),
+      };
+    }
+  }
+
+  const patterns = [" inside ", " within ", " in ", " to ", " near ", " around "];
+
+  for (const pattern of patterns) {
+    const index = normalized.indexOf(pattern);
+    if (index < 0) {
+      continue;
+    }
+
+    const rawTail = trimmed.slice(index + pattern.length).trim();
+    const targetName = cleanAreaText(rawTail);
+
+    if (!targetName) {
+      continue;
+    }
+
+    return {
+      targetName,
+      preferredTypes: inferPreferredTypesFromAreaText(rawTail),
+    };
+  }
+
+  return null;
+}
+
+function collectScopedOperationalLayerIds(prompt: string): string[] {
+  const normalized = normalizeText(prompt);
+  const ids = new Set<string>();
+
+  const highwayGeneric =
+    includesAlias(normalized, "highway") ||
+    includesAlias(normalized, "highways") ||
+    includesAlias(normalized, "road") ||
+    includesAlias(normalized, "roads") ||
+    includesAlias(normalized, "route") ||
+    includesAlias(normalized, "routes");
+
+  const nationalSpecific =
+    includesAlias(normalized, "national highway") ||
+    includesAlias(normalized, "national highways") ||
+    includesAlias(normalized, "national road") ||
+    includesAlias(normalized, "national roads");
+
+  const regionalSpecific =
+    includesAlias(normalized, "regional highway") ||
+    includesAlias(normalized, "regional highways") ||
+    includesAlias(normalized, "regional road") ||
+    includesAlias(normalized, "regional roads");
+
+  if (highwayGeneric && !nationalSpecific && !regionalSpecific) {
+    ids.add("national-highways");
+    ids.add("regional-highways");
+  } else {
+    if (nationalSpecific) {
+      ids.add("national-highways");
+    }
+
+    if (regionalSpecific) {
+      ids.add("regional-highways");
+    }
+  }
+
+  const addIfMatched = (layerId: string) => {
+    const layer = supportedLayers.find((item) => item.id === layerId);
+    if (!layer) return;
+
+    const matched = layer.aliases.some((alias) => includesAlias(normalized, alias));
+    if (matched) {
+      ids.add(layerId);
+    }
+  };
+
+  addIfMatched("airports");
+  addIfMatched("railways");
+  addIfMatched("rivers");
+  addIfMatched("land-port");
+  addIfMatched("economic-zone");
+  addIfMatched("bridge-toll");
+
+  return Array.from(ids);
+}
+
+function buildScopedLayerPlan(
+  prompt: string,
+  layerIds: string[],
+  area: { targetName: string; preferredTypes: Array<"division" | "district" | "upazila"> }
+): AssistantToolCall[] {
+  const plan: AssistantToolCall[] = [
+    {
+      tool: "findAdministrativeFeature",
+      args: {
+        targetName: area.targetName,
+        preferredTypes: area.preferredTypes,
+      },
+    },
+    {
+      tool: "zoomToFeature",
+      args: {
+        source: "lastQueryResult",
+      },
+    },
+    {
+      tool: "highlightFeature",
+      args: {
+        source: "lastQueryResult",
+      },
+    },
+    {
+      tool: "setLayerVisibility",
+      args: {
+        layerIds,
+        visible: true,
+      },
+    },
+  ];
+
+  for (const layerId of layerIds) {
+    plan.push({
+      tool: "queryAdministrativeLayer",
+      args: {
+        layerId,
+        withinName: area.targetName,
+        withinTypes: area.preferredTypes,
+        spatialRelationship: "intersects",
+      },
+    });
+  }
+
+  const wantsTable =
+    normalizeText(prompt).includes("open table") ||
+    normalizeText(prompt).includes("open the table") ||
+    normalizeText(prompt).includes("show table");
+
+  if (wantsTable && layerIds.length === 1) {
+    plan.push({
+      tool: "openAttributeTable",
+      args: {
+        source: "lastQueryResult",
+      },
+    });
+  }
+
+  return plan;
+}
+
 export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
   const normalized = normalizeText(prompt);
   const divisionName = extractDivisionName(prompt);
@@ -415,6 +638,8 @@ export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
     ];
   }
 
+  const areaConstraint = extractAreaConstraint(prompt);
+
   if (normalized.includes("nearest") || normalized.startsWith("near ")) {
     const nearestLayerId = detectNearestLayerId(prompt);
     if (nearestLayerId) {
@@ -423,7 +648,9 @@ export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
           tool: "findNearestFeature",
           args: {
             layerId: nearestLayerId,
-            useMapPoint: true,
+            useMapPoint: !areaConstraint,
+            targetName: areaConstraint?.targetName,
+            preferredAdminTypes: areaConstraint?.preferredTypes,
           },
         },
       ];
@@ -499,6 +726,15 @@ export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
     if (metric && (hasHighestIntent(normalized) || hasLowestIntent(normalized))) {
       return buildAdministrativeRankingPlan("division", metric, normalized);
     }
+  }
+
+  const scopedOperationalLayerIds = collectScopedOperationalLayerIds(prompt);
+  if (
+    areaConstraint &&
+    scopedOperationalLayerIds.length > 0 &&
+    hasOperationalAreaIntent(normalized)
+  ) {
+    return buildScopedLayerPlan(prompt, scopedOperationalLayerIds, areaConstraint);
   }
 
   if (isGenericAdministrativeLocationPrompt(normalized)) {

@@ -7,30 +7,97 @@ import type {
   FindNearestFeatureArgs,
 } from "../toolTypes";
 import {
+  findAdministrativeFeature,
   getFeatureDisplayLabel,
   getFeatureLayerById,
   queryAllFeatures,
 } from "../../arcgis/query/featureSearch";
 
+import type { AdminLevel } from "../../arcgis/query/types";
 import type FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
 import type Graphic from "@arcgis/core/Graphic";
 import type MapView from "@arcgis/core/views/MapView";
 import Point from "@arcgis/core/geometry/Point";
 
-function getReferencePoint(context: AssistantExecutionContext): Point | null {
-  const { session, view } = context;
+const DEFAULT_ADMIN_TYPES: AdminLevel[] = [
+  "division",
+  "district",
+  "upazila",
+];
 
-  if (session.lastClickedPoint) {
-    return new Point({
-      longitude: session.lastClickedPoint.longitude,
-      latitude: session.lastClickedPoint.latitude,
-      spatialReference: { wkid: 4326 },
-    });
+function getPointFromGeometry(graphic: Graphic): Point | null {
+  const geometry = graphic.geometry;
+
+  if (!geometry) {
+    return null;
   }
 
-  if (view?.center) {
-    return view.center.clone();
+  if (geometry.type === "point") {
+    return geometry as Point;
+  }
+
+  if ("centroid" in geometry && geometry.centroid) {
+    return geometry.centroid;
+  }
+
+  if ("extent" in geometry && geometry.extent) {
+    return geometry.extent.center;
+  }
+
+  return null;
+}
+
+async function getReferencePoint(
+  context: AssistantExecutionContext,
+  args: FindNearestFeatureArgs
+): Promise<{ point: Point; sourceLabel: string } | null> {
+  const { map, session, view } = context;
+
+  if (args.targetName && map) {
+    const preferredTypes: AdminLevel[] =
+      args.preferredAdminTypes && args.preferredAdminTypes.length
+        ? [...args.preferredAdminTypes]
+        : DEFAULT_ADMIN_TYPES;
+
+    for (const areaType of preferredTypes) {
+      const matched = await findAdministrativeFeature(
+        map,
+        areaType,
+        args.targetName
+      );
+
+      if (!matched) {
+        continue;
+      }
+
+      const point = getPointFromGeometry(matched.feature);
+
+      if (point) {
+        return {
+          point,
+          sourceLabel: `${areaType} "${args.targetName}"`,
+        };
+      }
+    }
+  }
+
+  if (args.useMapPoint !== false && session.lastClickedPoint) {
+    return {
+      point: new Point({
+        longitude: session.lastClickedPoint.longitude,
+        latitude: session.lastClickedPoint.latitude,
+        spatialReference: { wkid: 4326 },
+      }),
+      sourceLabel: "the selected map point",
+    };
+  }
+
+  if (args.useMapPoint !== false && view?.center) {
+    return {
+      point: view.center.clone(),
+      sourceLabel: "the current map center",
+    };
   }
 
   return null;
@@ -76,7 +143,9 @@ async function applyHighlight(
     layer.objectIdField ||
     layer.fields?.find((field) => field.type === "oid")?.name;
 
-  const objectId = objectIdField ? Number(graphic.attributes?.[objectIdField]) : NaN;
+  const objectId = objectIdField
+    ? Number(graphic.attributes?.[objectIdField])
+    : NaN;
 
   if (session.activeHighlightHandle) {
     session.activeHighlightHandle.remove();
@@ -113,11 +182,12 @@ export async function findNearestFeatureTool(
     };
   }
 
-  const referencePoint = getReferencePoint(context);
+  const reference = await getReferencePoint(context, args);
 
-  if (!referencePoint) {
+  if (!reference) {
     return {
-      message: "No map reference point is available yet. Click the map first or move the map.",
+      message:
+        "No usable reference point is available yet. Provide a district/division/upazila, click the map, or move the map.",
       data: null,
     };
   }
@@ -139,7 +209,7 @@ export async function findNearestFeatureTool(
       }
 
       const distance = geometryEngine.distance(
-        referencePoint,
+        reference.point,
         candidatePoint,
         "kilometers"
       );
@@ -173,6 +243,7 @@ export async function findNearestFeatureTool(
       message: [
         `The nearest feature was found in ${layer.title}.`,
         "",
+        `Reference: ${reference.sourceLabel}`,
         `Layer: ${layer.title}`,
         `Nearest Feature: ${label}`,
         `Distance: ${formatDistance(bestDistance)}`,
@@ -182,6 +253,7 @@ export async function findNearestFeatureTool(
         title: layer.title,
         label,
         distanceKm: bestDistance,
+        reference: reference.sourceLabel,
       },
     };
   } catch (error) {

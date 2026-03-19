@@ -11,7 +11,7 @@ import { findBestFuzzyMatch } from "../../../utils/fuzzy";
 const ADMIN_LEVEL_ALIASES: Record<AdminLevel, string[]> = {
   division: ["division", "div", "divison", "devision", "divisions"],
   district: ["district", "dist", "distrct", "distict", "districts"],
-  upazila: ["upazila", "upzilla", "upazilla", "upzila", "upazilas"],
+  upazila: ["upazila", "upzilla", "upazilla", "upzila", "upazilas", "thana"],
 };
 
 const COMMON_FILLER_TOKENS = new Set([
@@ -47,9 +47,7 @@ function normalizeAliasLookupKey(value: string): string {
 
 function replaceAliasTokens(text: string): string {
   const tokens = text.split(" ").filter(Boolean);
-
   const replaced = tokens.map((token) => bdPlaceAliases[token] ?? token);
-
   return replaced.join(" ");
 }
 
@@ -262,9 +260,12 @@ function stripAdminSuffix(raw: string): string {
     " district",
     " dist",
     " distrct",
+    " distict",
     " upazila",
     " upzilla",
     " upazilla",
+    " upzila",
+    " thana",
   ];
 
   for (const suffix of suffixes) {
@@ -357,6 +358,18 @@ export function extractGenericAdministrativeName(prompt: string): string {
 export function getGenericSearchPriority(prompt: string): AdminLevel[] {
   const normalized = normalizeText(prompt);
 
+  if (containsAny(normalized, ADMIN_LEVEL_ALIASES.upazila)) {
+    return ["upazila", "district", "division"];
+  }
+
+  if (containsAny(normalized, ADMIN_LEVEL_ALIASES.district)) {
+    return ["district", "division", "upazila"];
+  }
+
+  if (containsAny(normalized, ADMIN_LEVEL_ALIASES.division)) {
+    return ["division", "district", "upazila"];
+  }
+
   if (
     normalized.startsWith("what is the population of ") ||
     normalized.startsWith("population ") ||
@@ -369,9 +382,11 @@ export function getGenericSearchPriority(prompt: string): AdminLevel[] {
     normalized.startsWith("where is ") ||
     normalized.startsWith("where ") ||
     normalized.startsWith("locate ") ||
-    normalized.startsWith("zoom to ")
+    normalized.startsWith("zoom to ") ||
+    normalized.startsWith("go to ") ||
+    normalized.startsWith("show me ")
   ) {
-    return ["upazila", "district", "division"];
+    return ["division", "district", "upazila"];
   }
 
   return ["division", "district", "upazila"];
