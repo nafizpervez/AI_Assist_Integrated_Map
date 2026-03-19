@@ -4,14 +4,35 @@ import type {
   SpatialRelation,
 } from "./types";
 import {
+  isCountStylePrompt,
   isLocationStylePrompt,
   isPopulationStylePrompt,
+  isWhichStylePrompt,
 } from "./textUtils";
 
 import type Graphic from "@arcgis/core/Graphic";
 
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function formatFeatureLabelList(labels: string[]): string {
+  const cleaned = Array.from(
+    new Set(labels.map((label) => label.trim()).filter(Boolean))
+  );
+
+  if (!cleaned.length) {
+    return "";
+  }
+
+  if (cleaned.length <= 8) {
+    return cleaned.join(", ");
+  }
+
+  const firstBatch = cleaned.slice(0, 8).join(", ");
+  const remaining = cleaned.length - 8;
+
+  return `${firstBatch}, and ${remaining} more`;
 }
 
 export function formatPopulation(value: unknown): string {
@@ -180,6 +201,8 @@ interface BuildLayerAreaResponseParams {
   nounPlural: string;
   areaDisplayLabel: string;
   layerTitle: string;
+  prompt?: string;
+  featureLabels?: string[];
 }
 
 export function buildLayerAreaSuccessResponse(
@@ -187,18 +210,32 @@ export function buildLayerAreaSuccessResponse(
 ): string {
   const noun = params.count === 1 ? params.nounSingular : params.nounPlural;
   const verb = params.count === 1 ? "was" : "were";
+  const shouldList =
+    !!params.prompt &&
+    !isCountStylePrompt(params.prompt) &&
+    (isWhichStylePrompt(params.prompt) || isLocationStylePrompt(params.prompt));
 
-  return [
+  const formattedLabels = formatFeatureLabelList(params.featureLabels ?? []);
+
+  const lines = [
     `${params.count} ${noun} ${verb} found inside ${params.areaDisplayLabel} area boundary.`,
     "",
     `Area: ${params.areaDisplayLabel}`,
     `Layer: ${params.layerTitle}`,
     `Result Count: ${params.count}`,
-  ].join("\n");
+  ];
+
+  if (shouldList && formattedLabels) {
+    lines.push(
+      `${capitalize(params.count === 1 ? params.nounSingular : params.nounPlural)}: ${formattedLabels}`
+    );
+  }
+
+  return lines.join("\n");
 }
 
 export function buildLayerAreaNoResultResponse(
-  params: Omit<BuildLayerAreaResponseParams, "count">
+  params: Omit<BuildLayerAreaResponseParams, "count" | "prompt" | "featureLabels">
 ): string {
   return [
     `No ${params.nounSingular} found in ${params.areaDisplayLabel} area boundary.`,
@@ -207,6 +244,40 @@ export function buildLayerAreaNoResultResponse(
     `Layer: ${params.layerTitle}`,
     "Result Count: 0",
   ].join("\n");
+}
+
+interface BuildLayerAreaExtremeResponseParams {
+  count: number;
+  nounSingular: string;
+  nounPlural: string;
+  areaDisplayLabel: string;
+  areaType: AdminLevel;
+  extreme: PopulationExtreme;
+  layerTitle: string;
+  featureLabels?: string[];
+}
+
+export function buildLayerAreaExtremeResponse(
+  params: BuildLayerAreaExtremeResponseParams
+): string {
+  const noun = params.count === 1 ? params.nounSingular : params.nounPlural;
+  const formattedLabels = formatFeatureLabelList(params.featureLabels ?? []);
+
+  const lines = [
+    `${params.areaDisplayLabel} has the ${params.extreme} number of ${params.nounPlural}, with ${params.count} ${noun}.`,
+    "",
+    `Area Type: ${capitalize(params.areaType)}`,
+    `Area: ${params.areaDisplayLabel}`,
+    `Layer: ${params.layerTitle}`,
+    `Result Count: ${params.count}`,
+    `Ranking: ${capitalize(params.extreme)} ${params.nounPlural} ${params.areaType}`,
+  ];
+
+  if (formattedLabels) {
+    lines.push(`${capitalize(params.nounPlural)}: ${formattedLabels}`);
+  }
+
+  return lines.join("\n");
 }
 
 interface BuildSpatialRelationResponseParams {

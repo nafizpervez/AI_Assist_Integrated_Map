@@ -70,6 +70,24 @@ function isDivisionPopulationExtremePrompt(prompt: string): boolean {
   );
 }
 
+function isOperationalLayerAreaExtremePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+  const areaQueryableLayer = resolveAreaQueryableLayerFromPrompt(prompt);
+
+  if (!areaQueryableLayer) {
+    return false;
+  }
+
+  if (hasPopulationIntent(normalized)) {
+    return false;
+  }
+
+  const mentionsAreaType =
+    normalized.includes("division") || normalized.includes("district");
+
+  return mentionsAreaType && (hasHighestIntent(normalized) || hasLowestIntent(normalized));
+}
+
 function extractExplicitDistrictCandidate(prompt: string): string | null {
   const normalized = normalizeText(prompt);
 
@@ -259,6 +277,15 @@ export function routePrompt(prompt: string): RoutedPrompt {
   const areaQueryableLayer = resolveAreaQueryableLayerFromPrompt(prompt);
 
   if (administrativeAreaReference && areaQueryableLayer) {
+    return {
+      prompt,
+      normalized,
+      agent: "bangladeshAdminAgent",
+      intent: "findLayerInArea",
+    };
+  }
+
+  if (!administrativeAreaReference && isOperationalLayerAreaExtremePrompt(prompt)) {
     return {
       prompt,
       normalized,

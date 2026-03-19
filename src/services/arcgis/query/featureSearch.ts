@@ -6,6 +6,11 @@ import type {
   PopulationExtreme,
   QuerySpatialRelationship,
 } from "./types";
+import {
+  normalizeMatchValue,
+  normalizePlaceName,
+  splitPipeAliasTokens,
+} from "./textUtils";
 
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
@@ -13,7 +18,6 @@ import type Geometry from "@arcgis/core/geometry/Geometry";
 import type Graphic from "@arcgis/core/Graphic";
 import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
-import { normalizePlaceName } from "./textUtils";
 
 export function attachFeatureContext(
   feature: Graphic,
@@ -119,6 +123,55 @@ export async function getPopupFeatureFromLayer(
   return attachFeatureContext(freshFeature, layer);
 }
 
+export function getAttributeValueCaseInsensitive(
+  feature: Graphic,
+  fieldNames: string[]
+): unknown {
+  const attributes = feature.attributes ?? {};
+
+  for (const fieldName of fieldNames) {
+    if (fieldName in attributes) {
+      return attributes[fieldName];
+    }
+
+    const matchedKey = Object.keys(attributes).find(
+      (key) => key.toLowerCase() === fieldName.toLowerCase()
+    );
+
+    if (matchedKey) {
+      return attributes[matchedKey];
+    }
+  }
+
+  return undefined;
+}
+
+export function getAttributeStringCaseInsensitive(
+  feature: Graphic,
+  fieldNames: string[]
+): string {
+  const value = getAttributeValueCaseInsensitive(feature, fieldNames);
+
+  if (value === null || value === undefined) {
+    return "";
+  }
+
+  return String(value);
+}
+
+export async function queryAllFeatures(layer: FeatureLayer): Promise<Graphic[]> {
+  await layer.load();
+
+  const query = layer.createQuery();
+  query.where = "1=1";
+  query.outFields = ["*"];
+  query.returnGeometry = true;
+
+  const featureSet = await layer.queryFeatures(query);
+
+  return featureSet.features.map((feature) => attachFeatureContext(feature, layer));
+}
+
 export async function searchFeatureByField(
   layer: FeatureLayer,
   fieldName: string,
@@ -162,6 +215,98 @@ export async function searchFeatureByFields(
   }
 
   return null;
+}
+
+export function getPreferredDistrictReferenceTokens(feature: Graphic): string[] {
+  const name2 = normalizeMatchValue(
+    getAttributeStringCaseInsensitive(feature, ["name_2"])
+  );
+
+  const varnameTokens = splitPipeAliasTokens(
+    getAttributeStringCaseInsensitive(feature, ["varname_2"])
+  );
+
+  const merged = [...varnameTokens, name2].filter(Boolean);
+
+  return Array.from(new Set(merged));
+}
+
+export async function searchDistrictFeatureByNameOrVarname(
+  layer: FeatureLayer,
+  targetName: string
+): Promise<Graphic | null> {
+  const features = await queryAllFeatures(layer);
+  const normalizedTarget = normalizeMatchValue(targetName);
+
+  const directNameMatch =
+    features.find((feature) => {
+      const candidate = normalizeMatchValue(
+        getAttributeStringCaseInsensitive(feature, ["name_2"])
+      );
+
+      return candidate === normalizedTarget;
+    }) ?? null;
+
+  if (directNameMatch) {
+    return directNameMatch;
+  }
+
+  const aliasMatch =
+    features.find((feature) => {
+      const tokens = getPreferredDistrictReferenceTokens(feature);
+      return tokens.includes(normalizedTarget);
+    }) ?? null;
+
+  return aliasMatch;
+}
+
+export function getFeatureDisplayLabel(feature: Graphic): string {
+  const preferredFields = [
+    "port_name",
+    "PORT_NAME",
+    "Port_Name",
+    "name",
+    "Name",
+    "title",
+    "Title",
+    "airport_name",
+    "AIRPORT_NAME",
+    "river_name",
+    "RIVER_NAME",
+    "bridge_name",
+    "BRIDGE_NAME",
+    "location",
+    "Location",
+    "place_name",
+    "PLACE_NAME",
+    "name_en",
+    "NAME_EN",
+    "name_3",
+    "NAME_3",
+    "name_2",
+    "NAME_2",
+    "name_1",
+    "NAME_1",
+  ];
+
+  for (const fieldName of preferredFields) {
+    const value = getAttributeValueCaseInsensitive(feature, [fieldName]);
+
+    if (value !== null && value !== undefined && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+
+  const attributes = feature.attributes ?? {};
+  const firstUsableEntry = Object.entries(attributes).find(([, value]) => {
+    return value !== null && value !== undefined && String(value).trim();
+  });
+
+  if (firstUsableEntry) {
+    return String(firstUsableEntry[1]).trim();
+  }
+
+  return "Unnamed feature";
 }
 
 export async function searchExtremeFeatureByNumericField(

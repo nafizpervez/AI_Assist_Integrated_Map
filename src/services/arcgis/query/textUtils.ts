@@ -20,6 +20,21 @@ export function normalizePlaceName(value: string): string {
   return bdPlaceAliases[lookupKey] ?? lookupKey;
 }
 
+export function normalizeMatchValue(value: string): string {
+  return normalizePlaceName(value);
+}
+
+export function splitPipeAliasTokens(value: string | null | undefined): string[] {
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split("|")
+    .map((token) => normalizeMatchValue(token))
+    .filter(Boolean);
+}
+
 export function containsAny(text: string, candidates: string[]): boolean {
   return candidates.some((candidate) => text.includes(candidate));
 }
@@ -101,6 +116,29 @@ export function isLocationStylePrompt(prompt: string): boolean {
 
 export function isPopulationStylePrompt(prompt: string): boolean {
   return hasPopulationIntent(normalizeText(prompt));
+}
+
+export function isCountStylePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  return (
+    normalized.startsWith("how many ") ||
+    normalized.includes(" how many ") ||
+    normalized.startsWith("count ") ||
+    normalized.includes(" total ") ||
+    normalized.startsWith("total ") ||
+    normalized.includes("number of")
+  );
+}
+
+export function isWhichStylePrompt(prompt: string): boolean {
+  const normalized = normalizeText(prompt);
+
+  return (
+    normalized.startsWith("which ") ||
+    normalized.startsWith("what ") ||
+    normalized.startsWith("list ")
+  );
 }
 
 export function prefersWithinBoundary(prompt: string): boolean {
