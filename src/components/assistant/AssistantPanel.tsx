@@ -274,13 +274,13 @@ export default function AssistantPanel({
                 />
             )}
 
-            <AssistantDebugPanel
+            {/* <AssistantDebugPanel
                 agent={result?.agent ?? ""}
                 intent={result?.intent ?? ""}
                 matchedLayer={result?.matchedLayer ?? null}
                 success={result?.success}
                 lastPrompt={result?.prompt ?? ""}
-            />
+            /> */}
         </div>
     );
 }
