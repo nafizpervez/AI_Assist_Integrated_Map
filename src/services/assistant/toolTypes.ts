@@ -3,6 +3,7 @@ import type MapView from "@arcgis/core/views/MapView";
 
 export type AssistantToolName =
   | "queryAdministrativeLayer"
+  | "findAdministrativeFeature"
   | "openAttributeTable"
   | "zoomToFeature"
   | "highlightFeature"
@@ -20,6 +21,11 @@ export interface QueryAdministrativeLayerArgs {
   parentName?: string;
   targetName?: string;
   where?: string;
+}
+
+export interface FindAdministrativeFeatureArgs {
+  targetName: string;
+  preferredTypes?: Array<"division" | "district" | "upazila">;
 }
 
 export interface OpenAttributeTableArgs {
@@ -92,6 +98,7 @@ export interface ZoomToBangladeshArgs {
 
 export type AssistantToolArgs =
   | QueryAdministrativeLayerArgs
+  | FindAdministrativeFeatureArgs
   | OpenAttributeTableArgs
   | ZoomToFeatureArgs
   | HighlightFeatureArgs

@@ -6,6 +6,7 @@ import type {
 } from "./toolTypes";
 
 import { compareRegionsTool } from "./tools/compareRegionsTool";
+import { findAdministrativeFeatureTool } from "./tools/findAdministrativeFeatureTool";
 import { findNearestFeatureTool } from "./tools/findNearestFeatureTool";
 import { getWeatherContextTool } from "./tools/getWeatherContextTool";
 import { highlightFeatureTool } from "./tools/highlightFeatureTool";
@@ -26,6 +27,7 @@ export type AssistantToolHandler = (
 
 export const toolRegistry: Record<AssistantToolName, AssistantToolHandler> = {
   queryAdministrativeLayer: queryAdministrativeLayerTool,
+  findAdministrativeFeature: findAdministrativeFeatureTool,
   openAttributeTable: openAttributeTableTool,
   zoomToFeature: zoomToFeatureTool,
   highlightFeature: highlightFeatureTool,

@@ -10,12 +10,13 @@ import {
   getFeatureLayerById,
   queryAllFeatures,
 } from "../../arcgis/query/featureSearch";
+import { normalizePlaceName, normalizeText } from "../../arcgis/query/textUtils";
 
 import type FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type Graphic from "@arcgis/core/Graphic";
 import type Layer from "@arcgis/core/layers/Layer";
 import type Map from "@arcgis/core/Map";
-import { normalizeText } from "../../arcgis/query/textUtils";
+import { similarityScore } from "../../../utils/fuzzy";
 
 function normalizeTableValue(
   value: unknown
@@ -113,22 +114,34 @@ function matchesByCandidateFields(
   searchValue: string,
   candidateFields: string[]
 ): boolean {
-  const normalizedSearch = normalizeText(searchValue);
+  const normalizedSearch = normalizePlaceName(searchValue);
 
-  return candidateFields.some((field) => {
+  let bestScore = 0;
+
+  for (const field of candidateFields) {
     const raw = row[field];
 
     if (raw === null || raw === undefined || raw === "") {
-      return false;
+      continue;
     }
 
-    const normalizedRaw = normalizeText(String(raw));
+    const normalizedRaw = normalizePlaceName(String(raw));
 
-    return (
+    if (
       normalizedRaw === normalizedSearch ||
-      normalizedRaw.includes(normalizedSearch)
-    );
-  });
+      normalizedRaw.includes(normalizedSearch) ||
+      normalizedSearch.includes(normalizedRaw)
+    ) {
+      return true;
+    }
+
+    const score = similarityScore(normalizedRaw, normalizedSearch);
+    if (score > bestScore) {
+      bestScore = score;
+    }
+  }
+
+  return bestScore >= 0.74;
 }
 
 function featureMatchesArgs(
@@ -147,6 +160,7 @@ function featureMatchesArgs(
       "name_1",
       "parent_name",
       "parent",
+      "adm1_name",
     ];
 
     const parentMatched = matchesByCandidateFields(
@@ -176,6 +190,9 @@ function featureMatchesArgs(
       "adm1_en",
       "adm2_en",
       "adm3_en",
+      "adm1_name",
+      "adm2_name",
+      "adm3_name",
     ];
 
     const targetMatched = matchesByCandidateFields(
@@ -273,6 +290,10 @@ export async function queryAdministrativeLayerTool(
 
     if (args.parentName) {
       message = `Found ${filteredRows.length} ${args.layerId} record(s) in ${args.parentName}.`;
+    }
+
+    if (args.targetName && filteredRows.length === 1) {
+      message = `Found 1 matching record in ${resultData.title} for ${args.targetName}.`;
     }
 
     if (!filteredRows.length) {

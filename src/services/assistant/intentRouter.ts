@@ -3,20 +3,25 @@ import type {
   AssistantToolCall,
 } from "./toolTypes";
 import {
+  extractGenericAdministrativeName,
+  normalizePlaceName,
+  normalizeText,
+} from "../arcgis/query/textUtils";
+import {
   isResetMapPrompt,
   isZoomToBangladeshPrompt,
   resolveLayerVisibilityPrompt,
 } from "../../data/assistantHeuristics";
+import { resolveSupportedLayerFromPrompt, supportedLayers } from "../../data/layerDictionary";
 
-import { normalizeText } from "../arcgis/query/textUtils";
-import { resolveSupportedLayerFromPrompt } from "../../data/layerDictionary";
+import { findBestFuzzyMatch } from "../../utils/fuzzy";
 
 const DIVISION_ALIASES: Record<string, string[]> = {
-  Rajshahi: ["rajshahi", "rajhsahi", "rajshahis"],
+  Rajshahi: ["rajshahi", "rajhsahi", "rajshai", "rajshahis"],
   Dhaka: ["dhaka", "dhk", "dacca", "dhakas"],
-  Khulna: ["khulna", "kulna", "kulnas", "khulnas"],
+  Khulna: ["khulna", "kulna", "khulnna", "kulnas", "khulnas"],
   Barisal: ["barisal", "barishal", "borisal", "borishal", "barisals", "barishals"],
-  Chittagong: ["chittagong", "chattogram", "ctg", "ctgs"],
+  Chittagong: ["chittagong", "chattogram", "ctg", "chatgrom", "chitagong", "ctgs"],
   Sylhet: ["sylhet", "sylet", "shylet"],
   Rangpur: ["rangpur", "rongpur", "rangpurs"],
 };
@@ -30,6 +35,25 @@ function extractDivisionName(prompt: string): string | null {
     );
 
     if (matched) {
+      return canonicalName;
+    }
+  }
+
+  const divisionCandidates = Object.entries(DIVISION_ALIASES).flatMap(
+    ([canonicalName, aliases]) => [canonicalName.toLowerCase(), ...aliases]
+  );
+
+  const best = findBestFuzzyMatch(normalized, divisionCandidates, 0.74);
+
+  if (!best) {
+    return null;
+  }
+
+  for (const [canonicalName, aliases] of Object.entries(DIVISION_ALIASES)) {
+    if (
+      best.value === canonicalName.toLowerCase() ||
+      aliases.includes(best.value)
+    ) {
       return canonicalName;
     }
   }
@@ -56,7 +80,8 @@ function hasHighestIntent(normalized: string): boolean {
     normalized.includes("highest") ||
     normalized.includes("largest") ||
     normalized.includes("biggest") ||
-    normalized.includes("densest")
+    normalized.includes("densest") ||
+    normalized.includes("top")
   );
 }
 
@@ -64,7 +89,8 @@ function hasLowestIntent(normalized: string): boolean {
   return (
     normalized.includes("least") ||
     normalized.includes("lowest") ||
-    normalized.includes("smallest")
+    normalized.includes("smallest") ||
+    normalized.includes("bottom")
   );
 }
 
@@ -121,22 +147,51 @@ function extractCompareArgs(
 ): { leftName: string; rightName: string; metric?: string } | null {
   const normalized = normalizeText(prompt);
 
-  if (!normalized.startsWith("compare ")) {
+  const compareLike =
+    normalized.startsWith("compare ") ||
+    normalized.startsWith("difference between ") ||
+    normalized.includes(" vs ") ||
+    normalized.includes(" versus ");
+
+  if (!compareLike) {
     return null;
   }
 
-  const withoutCompare = prompt.trim().slice(8).trim();
-  const byParts = withoutCompare.split(/\s+by\s+/i);
+  let source = prompt.trim();
+
+  if (normalizeText(source).startsWith("compare ")) {
+    source = source.trim().slice(8).trim();
+  } else if (normalizeText(source).startsWith("difference between ")) {
+    source = source.trim().slice("difference between ".length).trim();
+  }
+
+  const byParts = source.split(/\s+by\s+/i);
   const namesPart = byParts[0]?.trim() ?? "";
   const metricPart = byParts[1]?.trim();
 
-  const andIndex = namesPart.toLowerCase().indexOf(" and ");
-  if (andIndex < 0) {
+  const normalizedNamesPart = normalizeText(namesPart);
+  let splitIndex = -1;
+  let splitToken = "";
+
+  for (const token of [" and ", " vs ", " versus "]) {
+    const index = normalizedNamesPart.indexOf(token);
+    if (index >= 0) {
+      splitIndex = index;
+      splitToken = token;
+      break;
+    }
+  }
+
+  if (splitIndex < 0) {
     return null;
   }
 
-  const leftName = namesPart.slice(0, andIndex).trim();
-  const rightName = namesPart.slice(andIndex + 5).trim();
+  const leftName = normalizePlaceName(
+    namesPart.slice(0, splitIndex).trim()
+  );
+  const rightName = normalizePlaceName(
+    namesPart.slice(splitIndex + splitToken.length).trim()
+  );
 
   if (!leftName || !rightName) {
     return null;
@@ -158,15 +213,45 @@ function extractWeatherTargetName(prompt: string): string | undefined {
     "get weather in ",
     "weather at ",
     "weather for ",
+    "weather near ",
   ];
 
   for (const pattern of patterns) {
     if (normalized.startsWith(pattern)) {
-      return prompt.trim().slice(pattern.length).trim();
+      return normalizePlaceName(prompt.trim().slice(pattern.length).trim());
     }
   }
 
   return undefined;
+}
+
+function detectNearestLayerId(prompt: string): string | null {
+  const direct = resolveSupportedLayerFromPrompt(prompt);
+  if (direct) {
+    return direct.id;
+  }
+
+  const normalized = normalizeText(prompt);
+
+  const allAliases = supportedLayers.flatMap((layer) =>
+    layer.aliases.map((alias) => ({
+      layerId: layer.id,
+      alias,
+    }))
+  );
+
+  const fuzzy = findBestFuzzyMatch(
+    normalized,
+    allAliases.map((item) => item.alias),
+    0.7
+  );
+
+  if (!fuzzy) {
+    return null;
+  }
+
+  const matched = allAliases.find((item) => item.alias === fuzzy.value);
+  return matched?.layerId ?? null;
 }
 
 function buildDistrictInDivisionPlan(
@@ -252,6 +337,35 @@ function buildAdministrativeRankingPlan(
   ];
 }
 
+function isDistrictLikePrompt(normalized: string): boolean {
+  return (
+    normalized.includes("district") ||
+    normalized.includes("dist ") ||
+    normalized.startsWith("dist") ||
+    normalized.includes("zila")
+  );
+}
+
+function isDivisionLikePrompt(normalized: string): boolean {
+  return (
+    normalized.includes("division") ||
+    normalized.includes("div ") ||
+    normalized.startsWith("div") ||
+    normalized.includes("bibhag")
+  );
+}
+
+function isGenericAdministrativeLocationPrompt(normalized: string): boolean {
+  return (
+    normalized.startsWith("where is ") ||
+    normalized.startsWith("where ") ||
+    normalized.startsWith("locate ") ||
+    normalized.startsWith("zoom to ") ||
+    normalized.startsWith("go to ") ||
+    normalized.startsWith("show me ")
+  );
+}
+
 export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
   const normalized = normalizeText(prompt);
   const divisionName = extractDivisionName(prompt);
@@ -301,14 +415,14 @@ export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
     ];
   }
 
-  if (normalized.includes("nearest")) {
-    const matchedLayer = resolveSupportedLayerFromPrompt(prompt);
-    if (matchedLayer) {
+  if (normalized.includes("nearest") || normalized.startsWith("near ")) {
+    const nearestLayerId = detectNearestLayerId(prompt);
+    if (nearestLayerId) {
       return [
         {
           tool: "findNearestFeature",
           args: {
-            layerId: matchedLayer.id,
+            layerId: nearestLayerId,
             useMapPoint: true,
           },
         },
@@ -345,7 +459,7 @@ export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
     ];
   }
 
-  if (divisionName && normalized.includes("district") && normalized.includes("division")) {
+  if (divisionName && isDistrictLikePrompt(normalized) && isDivisionLikePrompt(normalized)) {
     const shouldOpenTable =
       normalized.includes("open table") ||
       normalized.includes("open the table") ||
@@ -373,17 +487,44 @@ export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
     );
   }
 
-  if (normalized.includes("district")) {
+  if (isDistrictLikePrompt(normalized)) {
     const metric = extractRankMetric(normalized, "district");
     if (metric && (hasHighestIntent(normalized) || hasLowestIntent(normalized))) {
       return buildAdministrativeRankingPlan("district", metric, normalized);
     }
   }
 
-  if (normalized.includes("division")) {
+  if (isDivisionLikePrompt(normalized)) {
     const metric = extractRankMetric(normalized, "division");
     if (metric && (hasHighestIntent(normalized) || hasLowestIntent(normalized))) {
       return buildAdministrativeRankingPlan("division", metric, normalized);
+    }
+  }
+
+  if (isGenericAdministrativeLocationPrompt(normalized)) {
+    const targetName = extractGenericAdministrativeName(prompt);
+
+    if (targetName) {
+      return [
+        {
+          tool: "findAdministrativeFeature",
+          args: {
+            targetName,
+          },
+        },
+        {
+          tool: "zoomToFeature",
+          args: {
+            source: "lastQueryResult",
+          },
+        },
+        {
+          tool: "highlightFeature",
+          args: {
+            source: "lastQueryResult",
+          },
+        },
+      ];
     }
   }
 
