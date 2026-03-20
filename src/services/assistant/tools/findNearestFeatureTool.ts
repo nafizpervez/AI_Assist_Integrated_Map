@@ -19,6 +19,7 @@ import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
 import type Graphic from "@arcgis/core/Graphic";
 import type MapView from "@arcgis/core/views/MapView";
 import Point from "@arcgis/core/geometry/Point";
+import { normalizePlaceName } from "../../arcgis/query/textUtils";
 
 const DEFAULT_ADMIN_TYPES: AdminLevel[] = [
   "division",
@@ -55,6 +56,7 @@ async function getReferencePoint(
   const { map, session, view } = context;
 
   if (args.targetName && map) {
+    const normalizedTarget = normalizePlaceName(args.targetName);
     const preferredTypes: AdminLevel[] =
       args.preferredAdminTypes && args.preferredAdminTypes.length
         ? [...args.preferredAdminTypes]
@@ -64,7 +66,7 @@ async function getReferencePoint(
       const matched = await findAdministrativeFeature(
         map,
         areaType,
-        args.targetName
+        normalizedTarget
       );
 
       if (!matched) {
@@ -76,7 +78,7 @@ async function getReferencePoint(
       if (point) {
         return {
           point,
-          sourceLabel: `${areaType} "${args.targetName}"`,
+          sourceLabel: `${areaType} "${normalizedTarget}"`,
         };
       }
     }
@@ -231,7 +233,9 @@ export async function findNearestFeatureTool(
       };
     }
 
-    await view.goTo(bestFeature);
+    await view.goTo(bestFeature, {
+      duration: 900,
+    });
     await applyHighlight(view, layer, bestFeature, context.session);
     await view.openPopup({
       features: [bestFeature],

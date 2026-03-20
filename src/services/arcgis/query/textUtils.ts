@@ -257,14 +257,17 @@ function stripAdminSuffix(raw: string): string {
     " div",
     " divison",
     " devision",
+    " divisions",
     " district",
     " dist",
     " distrct",
     " distict",
+    " districts",
     " upazila",
     " upzilla",
     " upazilla",
     " upzila",
+    " upazilas",
     " thana",
   ];
 
@@ -285,6 +288,10 @@ function removeFillerTokens(value: string): string {
     .trim();
 }
 
+function cleanAdministrativeName(raw: string): string {
+  return normalizePlaceName(stripAdminSuffix(removeFillerTokens(raw)));
+}
+
 export function extractDistrictName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
@@ -299,7 +306,7 @@ export function extractDistrictName(prompt: string): string {
     "locate district ",
   ]);
 
-  return normalizePlaceName(stripAdminSuffix(removeFillerTokens(stripped)));
+  return cleanAdministrativeName(stripped);
 }
 
 export function extractDivisionName(prompt: string): string {
@@ -316,7 +323,7 @@ export function extractDivisionName(prompt: string): string {
     "locate division ",
   ]);
 
-  return normalizePlaceName(stripAdminSuffix(removeFillerTokens(stripped)));
+  return cleanAdministrativeName(stripped);
 }
 
 export function extractUpazilaName(prompt: string): string {
@@ -332,13 +339,13 @@ export function extractUpazilaName(prompt: string): string {
     "where ",
   ]);
 
-  return normalizePlaceName(stripAdminSuffix(removeFillerTokens(stripped)));
+  return cleanAdministrativeName(stripped);
 }
 
 export function extractGenericAdministrativeName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
-  const stripped = stripLeadingPhrases(normalized, [
+  let stripped = stripLeadingPhrases(normalized, [
     "what is the population of ",
     "population ",
     "people live in ",
@@ -352,7 +359,12 @@ export function extractGenericAdministrativeName(prompt: string): string {
     "display ",
   ]);
 
-  return normalizePlaceName(stripAdminSuffix(removeFillerTokens(stripped)));
+  stripped = stripped.replace(
+    /^(division|district|dist|distrct|distict|upazila|upzilla|upazilla|upzila|thana)\s+/,
+    ""
+  );
+
+  return cleanAdministrativeName(stripped);
 }
 
 export function getGenericSearchPriority(prompt: string): AdminLevel[] {
@@ -495,9 +507,7 @@ export function extractAdministrativeAreaReference(
 
   const prefix = normalized.slice(0, matchedIndex).trim();
   const rawAreaName = extractAreaNameFromPrefix(prefix);
-  const areaName = normalizePlaceName(
-    stripAdminSuffix(removeFillerTokens(rawAreaName))
-  );
+  const areaName = cleanAdministrativeName(rawAreaName);
 
   if (!areaName) {
     return null;

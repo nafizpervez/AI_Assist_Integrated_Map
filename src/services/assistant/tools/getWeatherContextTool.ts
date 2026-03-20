@@ -310,6 +310,11 @@ export async function getWeatherContextTool(
       distanceKm = nearest.distanceKm;
     }
 
+    if (context.session.activeHighlightHandle) {
+      context.session.activeHighlightHandle.remove();
+      context.session.activeHighlightHandle = null;
+    }
+
     await view.goTo(selectedFeature, {
       duration: 900,
     });

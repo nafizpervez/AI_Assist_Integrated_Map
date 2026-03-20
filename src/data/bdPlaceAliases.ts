@@ -63,6 +63,7 @@ export const bdPlaceAliases: Record<string, string> = {
   gazipur: "gazipur",
   gazipor: "gazipur",
   gajipur: "gazipur",
+  Gazipur: "gazipur",
 
   moulvibazar: "moulvibazar",
   moulvibazaar: "moulvibazar",
@@ -86,6 +87,7 @@ export const bdPlaceAliases: Record<string, string> = {
   distrct: "district",
   distict: "district",
   districts: "district",
+  district:"district",
 
   upzilla: "upazila",
   upzila: "upazila",

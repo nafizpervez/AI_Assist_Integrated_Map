@@ -18,6 +18,7 @@ import {
 
 import type { AdminLevel } from "../../arcgis/query/types";
 import type FeatureLayer from "@arcgis/core/layers/FeatureLayer";
+import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
 import type Graphic from "@arcgis/core/Graphic";
 
 function normalizeTableValue(
@@ -82,11 +83,11 @@ export async function findAdministrativeFeatureTool(
   _previousResults: AssistantToolResult[]
 ): Promise<Omit<AssistantToolResult, "tool" | "success">> {
   const args = rawArgs as FindAdministrativeFeatureArgs;
-  const { map, session, prompt } = context;
+  const { map, view, session, prompt } = context;
 
-  if (!map) {
+  if (!map || !view) {
     return {
-      message: "Map is not ready yet.",
+      message: "Map view is not ready yet.",
       data: null,
     };
   }
@@ -114,6 +115,7 @@ export async function findAdministrativeFeatureTool(
       }
 
       setAdministrativeLayerVisibility(map, areaType);
+      matched.layer.visible = true;
 
       const resultData = buildSingleFeatureResult(matched.layer, matched.feature);
       session.lastQueryResult = resultData;
@@ -121,6 +123,28 @@ export async function findAdministrativeFeatureTool(
         layerId: resultData.layerId,
         objectIds: resultData.objectIds,
       };
+
+      if (session.activeHighlightHandle) {
+        session.activeHighlightHandle.remove();
+        session.activeHighlightHandle = null;
+      }
+
+      await view.goTo(matched.feature, {
+        duration: 900,
+      });
+
+      const objectId = resultData.objectIds[0];
+      if (typeof objectId === "number" && Number.isFinite(objectId)) {
+        const layerView = (await view.whenLayerView(
+          matched.layer
+        )) as FeatureLayerView;
+
+        session.activeHighlightHandle = layerView.highlight([objectId]);
+      }
+
+      await view.openPopup({
+        features: [matched.feature],
+      });
 
       return {
         message: `Found ${toAdminLabel(areaType)}: ${targetName}.`,

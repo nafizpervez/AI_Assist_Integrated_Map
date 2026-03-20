@@ -58,9 +58,10 @@ function setOnlyTargetOperationalLayersVisible(
   targetLayerIds: string[]
 ): void {
   const idSet = new Set(targetLayerIds);
+  const keepAlwaysVisible = new Set(["bd-boundary"]);
 
   getOperationalLayers(map).forEach((layer: Layer) => {
-    layer.visible = idSet.has(layer.id);
+    layer.visible = idSet.has(layer.id) || keepAlwaysVisible.has(layer.id);
   });
 }
 
@@ -82,7 +83,7 @@ export async function setLayerVisibilityTool(
   _previousResults: AssistantToolResult[]
 ): Promise<Omit<AssistantToolResult, "tool" | "success">> {
   const args = rawArgs as SetLayerVisibilityArgs;
-  const { map } = context;
+  const { map, session, view } = context;
 
   if (!map) {
     return {
@@ -104,6 +105,19 @@ export async function setLayerVisibilityTool(
   }
 
   clearAllOperationalDefinitionExpressions(map);
+
+  if (session.activeHighlightHandle) {
+    session.activeHighlightHandle.remove();
+    session.activeHighlightHandle = null;
+  }
+
+  if (view?.popup) {
+    if (typeof view.popup.close === "function") {
+      view.popup.close();
+    } else {
+      view.popup.visible = false;
+    }
+  }
 
   if (args.visible) {
     setOnlyTargetOperationalLayersVisible(

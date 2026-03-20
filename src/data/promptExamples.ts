@@ -23,11 +23,6 @@ export const promptExamples = [
   "compare Khulna and Sulhet by rural population",
   "compare Sylhet and Rajshahi by density",
 
-  "find the nearest airport to this place",
-  "find the nearest bridge to this place",
-  "find the nearest port to this place",
-  "find the nearest railway to this place",
-
   "find the nearest airport to Dhaka",
   "find the nearest bridge to Khulna division",
   "find the nearest port to Chattogram district",
@@ -37,9 +32,7 @@ export const promptExamples = [
   "find the nearest port to Barisal division",
   "find the nearest railway to Dhaka district",
 
-  "what is the weather here",
   "show weather in Dhaka",
-  "get weather near this place",
 
   "summarize what is visible on the map now",
 
@@ -103,14 +96,13 @@ export const promptExamples = [
   "show rivers and ports in Barisal division",
   "show airports and railways in Dhaka division",
   "show highways and tolls in Khulna division",
-  "show ports and economic zone in Chattogram division",
+  "show ports in Chattogram division",
   "show rivers and railways in Rajshahi division",
   "show highways and ports in Barisal division",
   "show airports and ports in Dhaka division",
   "show highways and tolls in Dhaka",
   "show railways and ports in Khulna",
   "show rivers and airports in Rajshahi",
-  "show economic zone and ports in Chattogram district",
   "in Khulna show me Highways with tolls and ports",
   "in Dhaka show me airports and railways",
   "in Rajshahi show me rivers and ports",

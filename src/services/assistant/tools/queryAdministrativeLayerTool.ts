@@ -11,6 +11,7 @@ import {
   getFeatureLayerById,
   queryAllFeatures,
   queryFeaturesByGeometry,
+  setLayerFilterByObjectIds,
 } from "../../arcgis/query/featureSearch";
 import { normalizePlaceName, normalizeText } from "../../arcgis/query/textUtils";
 
@@ -330,6 +331,10 @@ export async function queryAdministrativeLayerTool(
     const filteredObjectIds = filteredFeatures
       .map((feature) => getGraphicObjectId(feature, objectIdField))
       .filter((value): value is number => value !== null);
+
+    if (args.withinName) {
+      setLayerFilterByObjectIds(layer, filteredObjectIds);
+    }
 
     const filteredRows = toRows(filteredFeatures);
 

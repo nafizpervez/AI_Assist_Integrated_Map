@@ -457,6 +457,9 @@ function extractAreaConstraint(
     const targetName = cleanAreaText(rawTail);
 
     if (!targetName) {
+      if (pattern === " to " || pattern === " near " || pattern === " around ") {
+        return null;
+      }
       continue;
     }
 
@@ -541,12 +544,6 @@ function buildScopedLayerPlan(
     },
     {
       tool: "zoomToFeature",
-      args: {
-        source: "lastQueryResult",
-      },
-    },
-    {
-      tool: "highlightFeature",
       args: {
         source: "lastQueryResult",
       },

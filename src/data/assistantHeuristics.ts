@@ -30,6 +30,12 @@ function isComplexPrompt(normalized: string): boolean {
     normalized.includes(" within ") ||
     normalized.includes(" near ") ||
     normalized.includes(" across ") ||
+    normalized.includes("show weather in ") ||
+    normalized.includes("weather in ") ||
+    normalized.includes("get weather in ") ||
+    normalized.includes("weather at ") ||
+    normalized.includes("weather for ") ||
+    normalized.includes("weather near ") ||
     normalized.includes(" in dhaka") ||
     normalized.includes(" in khulna") ||
     normalized.includes(" in barisal") ||
@@ -38,6 +44,79 @@ function isComplexPrompt(normalized: string): boolean {
     normalized.includes(" in rangpur") ||
     normalized.includes(" in rajshahi")
   );
+}
+
+function isBareLayerVisibilityPrompt(normalized: string): boolean {
+  const barePrompts = new Set([
+    "show division",
+    "hide division",
+    "show district",
+    "hide district",
+    "show upazila",
+    "hide upazila",
+
+    "show population",
+    "hide population",
+    "show density",
+    "hide density",
+
+    "show toll",
+    "hide toll",
+    "show bridge",
+    "hide bridge",
+
+    "show railways",
+    "hide railways",
+    "show railway",
+    "hide railway",
+
+    "show highway",
+    "hide highway",
+    "show highways",
+    "hide highways",
+    "show national highway",
+    "hide national highway",
+    "show regional highway",
+    "hide regional highway",
+
+    "show airports",
+    "hide airports",
+    "show airport",
+    "hide airport",
+
+    "show rivers",
+    "hide rivers",
+    "show river",
+    "hide river",
+
+    "show land port",
+    "hide land port",
+    "show sea port",
+    "hide sea port",
+    "show ports",
+    "hide ports",
+    "show port",
+    "hide port",
+
+    "show economic zone",
+    "hide economic zone",
+    "show economic zones",
+    "hide economic zones",
+
+    "show weather",
+    "hide weather",
+
+    "show bangladesh boundary",
+    "hide bangladesh boundary",
+    "show bangladesh",
+    "hide bangladesh",
+    "show bd",
+    "hide bd",
+    "show boundary",
+    "hide boundary",
+  ]);
+
+  return barePrompts.has(normalized);
 }
 
 function getSpecialLayerMatch(
@@ -69,6 +148,26 @@ function getSpecialLayerMatch(
   }
 
   if (
+    normalized.includes("national highway") ||
+    normalized.includes("national highways")
+  ) {
+    return {
+      layerIds: ["national-highways"],
+      layerTitle: "National Highways",
+    };
+  }
+
+  if (
+    normalized.includes("regional highway") ||
+    normalized.includes("regional highways")
+  ) {
+    return {
+      layerIds: ["regional-highways"],
+      layerTitle: "Regional Highways",
+    };
+  }
+
+  if (
     normalized.includes(" highway") ||
     normalized.includes(" highways") ||
     normalized.includes(" road") ||
@@ -77,20 +176,6 @@ function getSpecialLayerMatch(
     return {
       layerIds: ["national-highways", "regional-highways"],
       layerTitle: "Highways",
-    };
-  }
-
-  if (normalized.includes("national highway") || normalized.includes("national highways")) {
-    return {
-      layerIds: ["national-highways"],
-      layerTitle: "National Highways",
-    };
-  }
-
-  if (normalized.includes("regional highway") || normalized.includes("regional highways")) {
-    return {
-      layerIds: ["regional-highways"],
-      layerTitle: "Regional Highways",
     };
   }
 
@@ -125,7 +210,10 @@ function getSpecialLayerMatch(
     };
   }
 
-  if (normalized.includes("weather")) {
+  if (
+    normalized === "show weather" ||
+    normalized === "hide weather"
+  ) {
     return {
       layerIds: ["weather"],
       layerTitle: "Weather Data",
@@ -149,8 +237,10 @@ function getSpecialLayerMatch(
   if (
     normalized.includes("economic zone") ||
     normalized.includes("economic zones") ||
-    normalized.includes("zone") ||
-    normalized.includes("zones")
+    normalized === "show zone" ||
+    normalized === "hide zone" ||
+    normalized === "show zones" ||
+    normalized === "hide zones"
   ) {
     return {
       layerIds: ["economic-zone"],
@@ -189,6 +279,10 @@ export function resolveLayerVisibilityPrompt(
   const isHide = normalized.startsWith("hide ");
 
   if (!isShow && !isHide) {
+    return null;
+  }
+
+  if (!isBareLayerVisibilityPrompt(normalized)) {
     return null;
   }
 

@@ -191,6 +191,7 @@ export async function highlightFeatureTool(
 
   try {
     await candidate.load();
+    candidate.visible = true;
 
     const objectIdField = getObjectIdFieldName(candidate);
     const query = candidate.createQuery();
