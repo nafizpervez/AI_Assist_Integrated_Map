@@ -54,6 +54,7 @@ function buildScopedMultiLayerResult(
   const scopedItems: AssistantQueryResultData[] = [];
   let scopeName: string | undefined;
   let scopeLayerId: string | undefined;
+  let scopeFeatureItem: AssistantQueryResultData | null = null;
 
   for (let index = 0; index < calls.length; index += 1) {
     const call = calls[index];
@@ -70,6 +71,8 @@ function buildScopedMultiLayerResult(
     ) {
       scopeName = call.args.targetName;
       scopeLayerId = result.data.layerId;
+      scopeFeatureItem = result.data;
+      continue;
     }
 
     if (
@@ -87,14 +90,22 @@ function buildScopedMultiLayerResult(
     }
   }
 
-  if (scopedItems.length <= 1) {
+  const items: AssistantQueryResultData[] = [];
+
+  if (scopeFeatureItem) {
+    items.push(scopeFeatureItem);
+  }
+
+  items.push(...scopedItems);
+
+  if (!items.length) {
     return null;
   }
 
   return {
     scopeName,
     scopeLayerId,
-    items: scopedItems.map((item) => ({
+    items: items.map((item) => ({
       layerId: item.layerId,
       title: item.title,
       totalCount: item.totalCount,
@@ -102,11 +113,8 @@ function buildScopedMultiLayerResult(
       columns: item.columns,
       rows: item.rows,
     })),
-    totalLayerCount: scopedItems.length,
-    totalFeatureCount: scopedItems.reduce(
-      (sum, item) => sum + item.totalCount,
-      0
-    ),
+    totalLayerCount: items.length,
+    totalFeatureCount: items.reduce((sum, item) => sum + item.totalCount, 0),
   };
 }
 
@@ -116,7 +124,9 @@ export async function executeToolCalls(
 ): Promise<AssistantToolResult[]> {
   const results: AssistantToolResult[] = [];
 
+  context.session.lastQueryResult = null;
   context.session.lastMultiLayerQueryResult = null;
+  context.session.lastAttributeTable = null;
 
   for (const call of calls) {
     const toolFn = toolRegistry[call.tool];
@@ -167,7 +177,10 @@ export async function executeToolCalls(
   }
 
   const multiLayerResult = buildScopedMultiLayerResult(calls, results);
-  context.session.lastMultiLayerQueryResult = multiLayerResult;
+
+  if (multiLayerResult) {
+    context.session.lastMultiLayerQueryResult = multiLayerResult;
+  }
 
   return results;
 }

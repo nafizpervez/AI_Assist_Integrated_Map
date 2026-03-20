@@ -1,10 +1,11 @@
-import type { AssistantResponse } from "../../types/assistant";
+import type { AssistantAttributeTable, AssistantResponse } from "../../types/assistant";
+import { useMemo, useState } from "react";
+
 import AttributeTablePanel from "./AttributeTablePanel";
 import PromptExamples from "./PromptExamples";
 import { runAssistantPrompt } from "../../services/assistant/assistantBootstrap";
 import { useAssistantContext } from "../../context/AssistantContext";
 import { useMapView } from "../../hooks/useMapView";
-import { useState } from "react";
 
 type PanelMode = "collapsed" | "normal" | "expanded";
 
@@ -111,6 +112,130 @@ function renderResponseSections(answer: string) {
     );
 }
 
+function AttributeTableLaunchList({
+    tables,
+    onOpen,
+}: {
+    tables: AssistantAttributeTable[];
+    onOpen: (table: AssistantAttributeTable) => void;
+}) {
+    return (
+        <div
+            style={{
+                display: "grid",
+                gap: "12px",
+            }}
+        >
+            {tables.map((table) => (
+                <div
+                    key={`${table.layerId}-${table.title}`}
+                    style={{
+                        border: "1px solid #e2e8f0",
+                        borderRadius: "14px",
+                        background: "#ffffff",
+                        padding: "14px",
+                        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.05)",
+                        display: "grid",
+                        gap: "10px",
+                    }}
+                >
+                    <div
+                        style={{
+                            display: "flex",
+                            alignItems: "flex-start",
+                            justifyContent: "space-between",
+                            gap: "10px",
+                        }}
+                    >
+                        <div style={{ minWidth: 0 }}>
+                            <div
+                                style={{
+                                    fontSize: "14px",
+                                    fontWeight: 700,
+                                    color: "#0f172a",
+                                    lineHeight: 1.4,
+                                    wordBreak: "break-word",
+                                }}
+                            >
+                                {table.title}
+                            </div>
+
+                            <div
+                                style={{
+                                    marginTop: "6px",
+                                    display: "flex",
+                                    flexWrap: "wrap",
+                                    gap: "8px",
+                                }}
+                            >
+                                <span
+                                    style={{
+                                        fontSize: "12px",
+                                        color: "#475569",
+                                        background: "#f8fafc",
+                                        border: "1px solid #e2e8f0",
+                                        borderRadius: "999px",
+                                        padding: "4px 8px",
+                                    }}
+                                >
+                                    Layer: {table.layerId}
+                                </span>
+
+                                <span
+                                    style={{
+                                        fontSize: "12px",
+                                        color: "#475569",
+                                        background: "#f8fafc",
+                                        border: "1px solid #e2e8f0",
+                                        borderRadius: "999px",
+                                        padding: "4px 8px",
+                                    }}
+                                >
+                                    Rows: {table.shownCount.toLocaleString()}
+                                </span>
+
+                                <span
+                                    style={{
+                                        fontSize: "12px",
+                                        color: "#475569",
+                                        background: "#f8fafc",
+                                        border: "1px solid #e2e8f0",
+                                        borderRadius: "999px",
+                                        padding: "4px 8px",
+                                    }}
+                                >
+                                    Columns: {table.columns.length.toLocaleString()}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div>
+                        <button
+                            type="button"
+                            onClick={() => onOpen(table)}
+                            style={{
+                                width: "100%",
+                                padding: "10px 12px",
+                                border: "1px solid #0f172a",
+                                background: "#0f172a",
+                                color: "#ffffff",
+                                borderRadius: "12px",
+                                cursor: "pointer",
+                                fontWeight: 700,
+                                fontSize: "13px",
+                                boxShadow: "0 8px 20px rgba(15, 23, 42, 0.14)",
+                            }}
+                        >
+                            Open attribute table
+                        </button>
+                    </div>
+                </div>
+            ))}
+        </div>
+    );
+}
+
 export default function AssistantPanel({
     panelMode = "normal",
 }: AssistantPanelProps) {
@@ -120,6 +245,12 @@ export default function AssistantPanel({
     const [prompt, setPrompt] = useState("");
     const [result, setResult] = useState<AssistantResponse | null>(null);
     const [running, setRunning] = useState(false);
+    const [selectedTable, setSelectedTable] = useState<AssistantAttributeTable | null>(null);
+
+    const availableTables = useMemo(
+        () => result?.availableAttributeTables ?? [],
+        [result]
+    );
 
     const runPrompt = async (value: string) => {
         setRunning(true);
@@ -134,6 +265,7 @@ export default function AssistantPanel({
 
             setResult(response);
             setLastResponse(response);
+            setSelectedTable(null);
         } finally {
             setRunning(false);
         }
@@ -149,134 +281,164 @@ export default function AssistantPanel({
     };
 
     return (
-        <div style={{ display: "grid", gap: "12px" }}>
-            <div
-                style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "16px",
-                    padding: "14px",
-                    background: "#ffffff",
-                    boxShadow: "0 12px 32px rgba(15, 23, 42, 0.05)",
-                }}
-            >
+        <>
+            <div style={{ display: "grid", gap: "12px" }}>
                 <div
                     style={{
-                        fontWeight: 800,
-                        marginBottom: "6px",
-                        color: "#0f172a",
-                        fontSize: "16px",
-                        letterSpacing: "-0.01em",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "16px",
+                        padding: "14px",
+                        background: "#ffffff",
+                        boxShadow: "0 12px 32px rgba(15, 23, 42, 0.05)",
                     }}
                 >
-                    Assistant
+                    <div
+                        style={{
+                            fontWeight: 800,
+                            marginBottom: "6px",
+                            color: "#0f172a",
+                            fontSize: "16px",
+                            letterSpacing: "-0.01em",
+                        }}
+                    >
+                        Assistant
+                    </div>
+
+                    <div
+                        style={{
+                            fontSize: "12px",
+                            color: "#64748b",
+                            marginBottom: "10px",
+                            lineHeight: 1.5,
+                        }}
+                    >
+                        Ask the map to zoom, show layers, find areas, or open attribute tables.
+                    </div>
+
+                    <textarea
+                        value={prompt}
+                        onChange={(e) => setPrompt(e.target.value)}
+                        placeholder="Type a map instruction..."
+                        rows={5}
+                        style={{
+                            width: "100%",
+                            resize: "vertical",
+                            padding: "12px 13px",
+                            borderRadius: "12px",
+                            border: "1px solid #d1d5db",
+                            background: "#f8fafc",
+                            fontFamily: "inherit",
+                            fontSize: "14px",
+                            color: "#0f172a",
+                            outline: "none",
+                            lineHeight: 1.5,
+                        }}
+                    />
+
+                    <button
+                        onClick={() => void handleRun()}
+                        disabled={running}
+                        style={{
+                            marginTop: "10px",
+                            width: "100%",
+                            padding: "11px 12px",
+                            border: "1px solid #111827",
+                            background: "#111827",
+                            color: "#fff",
+                            borderRadius: "12px",
+                            cursor: running ? "not-allowed" : "pointer",
+                            fontWeight: 700,
+                            fontSize: "13px",
+                            opacity: running ? 0.7 : 1,
+                            boxShadow: "0 8px 20px rgba(15, 23, 42, 0.15)",
+                        }}
+                    >
+                        {running ? "Running..." : "Run prompt"}
+                    </button>
                 </div>
 
-                <div
-                    style={{
-                        fontSize: "12px",
-                        color: "#64748b",
-                        marginBottom: "10px",
-                        lineHeight: 1.5,
-                    }}
-                >
-                    Ask the map to zoom, show layers, find areas, or open attribute tables.
-                </div>
-
-                <textarea
-                    value={prompt}
-                    onChange={(e) => setPrompt(e.target.value)}
-                    placeholder="Type a map instruction..."
-                    rows={5}
-                    style={{
-                        width: "100%",
-                        resize: "vertical",
-                        padding: "12px 13px",
-                        borderRadius: "12px",
-                        border: "1px solid #d1d5db",
-                        background: "#f8fafc",
-                        fontFamily: "inherit",
-                        fontSize: "14px",
-                        color: "#0f172a",
-                        outline: "none",
-                        lineHeight: 1.5,
-                    }}
+                <PromptExamples
+                    panelMode={panelMode}
+                    activePrompt={prompt}
+                    onSelect={(value) => void handleExampleSelect(value)}
                 />
 
-                <button
-                    onClick={() => void handleRun()}
-                    disabled={running}
-                    style={{
-                        marginTop: "10px",
-                        width: "100%",
-                        padding: "11px 12px",
-                        border: "1px solid #111827",
-                        background: "#111827",
-                        color: "#fff",
-                        borderRadius: "12px",
-                        cursor: running ? "not-allowed" : "pointer",
-                        fontWeight: 700,
-                        fontSize: "13px",
-                        opacity: running ? 0.7 : 1,
-                        boxShadow: "0 8px 20px rgba(15, 23, 42, 0.15)",
-                    }}
-                >
-                    {running ? "Running..." : "Run prompt"}
-                </button>
-            </div>
-
-            <PromptExamples
-                panelMode={panelMode}
-                activePrompt={prompt}
-                onSelect={(value) => void handleExampleSelect(value)}
-            />
-
-            <div
-                style={{
-                    border: "1px solid #e5e7eb",
-                    borderRadius: "16px",
-                    padding: "14px",
-                    background: "#ffffff",
-                    boxShadow: result
-                        ? "0 12px 32px rgba(15, 23, 42, 0.06)"
-                        : "0 6px 18px rgba(15, 23, 42, 0.03)",
-                }}
-            >
                 <div
                     style={{
-                        fontWeight: 800,
-                        marginBottom: "10px",
-                        color: "#0f172a",
-                        fontSize: "15px",
-                        letterSpacing: "-0.01em",
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "16px",
+                        padding: "14px",
+                        background: "#ffffff",
+                        boxShadow: result
+                            ? "0 12px 32px rgba(15, 23, 42, 0.06)"
+                            : "0 6px 18px rgba(15, 23, 42, 0.03)",
                     }}
                 >
-                    Response
+                    <div
+                        style={{
+                            fontWeight: 800,
+                            marginBottom: "10px",
+                            color: "#0f172a",
+                            fontSize: "15px",
+                            letterSpacing: "-0.01em",
+                        }}
+                    >
+                        Response
+                    </div>
+
+                    {result ? (
+                        <div>{renderResponseSections(result.answer)}</div>
+                    ) : (
+                        <div style={{ fontSize: "13px", color: "#6b7280", lineHeight: 1.5 }}>
+                            No prompt has been run yet.
+                        </div>
+                    )}
                 </div>
 
-                {result ? (
-                    <div>{renderResponseSections(result.answer)}</div>
-                ) : (
-                    <div style={{ fontSize: "13px", color: "#6b7280", lineHeight: 1.5 }}>
-                        No prompt has been run yet.
+                <div
+                    style={{
+                        border: "1px solid #e5e7eb",
+                        borderRadius: "16px",
+                        padding: "14px",
+                        background: "#ffffff",
+                        boxShadow: availableTables.length
+                            ? "0 12px 32px rgba(15, 23, 42, 0.06)"
+                            : "0 6px 18px rgba(15, 23, 42, 0.03)",
+                    }}
+                >
+                    <div
+                        style={{
+                            fontWeight: 800,
+                            marginBottom: "10px",
+                            color: "#0f172a",
+                            fontSize: "15px",
+                            letterSpacing: "-0.01em",
+                        }}
+                    >
+                        Available Attribute Tables
                     </div>
-                )}
+
+                    {availableTables.length > 0 ? (
+                        <AttributeTableLaunchList
+                            tables={availableTables}
+                            onOpen={(table) => setSelectedTable(table)}
+                        />
+                    ) : (
+                        <div style={{ fontSize: "13px", color: "#6b7280", lineHeight: 1.5 }}>
+                            No filtered attribute tables are available for the current result.
+                        </div>
+                    )}
+                </div>
             </div>
 
-            {result?.attributeTable && (
+            {selectedTable && (
                 <AttributeTablePanel
-                    table={result.attributeTable}
-                    onClose={() =>
-                        setResult((prev) =>
-                            prev
-                                ? {
-                                    ...prev,
-                                    attributeTable: null,
-                                }
-                                : null
-                        )
-                    }
+                    table={selectedTable}
+                    onClose={() => setSelectedTable(null)}
+                    renderInline={false}
+                    initialFullscreen={true}
                 />
             )}
-        </div>
+        </>
     );
 }

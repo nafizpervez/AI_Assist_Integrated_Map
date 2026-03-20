@@ -73,4 +73,5 @@ export interface AssistantResponse {
   matchedLayer?: string | null;
   meta?: AssistantResponseMeta | null;
   attributeTable?: AssistantAttributeTable | null;
+  availableAttributeTables?: AssistantAttributeTable[];
 }

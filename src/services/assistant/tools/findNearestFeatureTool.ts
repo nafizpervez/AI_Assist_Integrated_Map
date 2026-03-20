@@ -2,6 +2,8 @@ import * as webMercatorUtils from "@arcgis/core/geometry/support/webMercatorUtil
 
 import type {
   AssistantExecutionContext,
+  AssistantQueryResultData,
+  AssistantQueryRow,
   AssistantToolArgs,
   AssistantToolResult,
   FindNearestFeatureArgs,
@@ -126,7 +128,7 @@ function restoreAdministrativeLayerPresentation(map: Map): void {
 
 function hideAdministrativeLayerOnMapKeepLegend(layer: FeatureLayer): void {
   layer.visible = true;
-  layer.opacity = 0;
+  layer.opacity = 0.05;
 }
 
 function setNearestScopedVisibility(
@@ -219,6 +221,86 @@ function getPointFromGeometry(graphic: GraphicType): Point | null {
   }
 
   return null;
+}
+
+function normalizeTableValue(
+  value: unknown
+): string | number | boolean | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return String(value);
+}
+
+function toAssistantQueryRow(feature: GraphicType): AssistantQueryRow {
+  const attributes = feature.attributes ?? {};
+  const row: AssistantQueryRow = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    row[key] = normalizeTableValue(value);
+  }
+
+  return row;
+}
+
+function buildQueryResultDataFromFeatures(
+  layer: FeatureLayer,
+  features: GraphicType[]
+): AssistantQueryResultData {
+  const rows = features.map(toAssistantQueryRow);
+  const columns =
+    rows[0] != null
+      ? Object.keys(rows[0])
+      : layer.fields?.map((field) => field.name).filter(Boolean) ?? [];
+
+  return {
+    layerId: layer.id,
+    title: layer.title?.trim() || layer.id,
+    columns,
+    rows,
+    totalCount: rows.length,
+    objectIds: getFeatureObjectIds(features, layer),
+  };
+}
+
+function setScopedSessionResults(
+  session: AssistantExecutionContext["session"],
+  scopeName: string,
+  scopeLayerId: string,
+  scopeQueryResult: AssistantQueryResultData,
+  scopedQueryResults: AssistantQueryResultData[]
+): void {
+  const items = [scopeQueryResult, ...scopedQueryResults];
+
+  session.lastQueryResult = scopeQueryResult;
+
+  session.lastMultiLayerQueryResult = {
+    scopeName,
+    scopeLayerId,
+    items: items.map((item) => ({
+      layerId: item.layerId,
+      title: item.title,
+      totalCount: item.totalCount,
+      objectIds: item.objectIds,
+      columns: item.columns,
+      rows: item.rows,
+    })),
+    totalLayerCount: items.length,
+    totalFeatureCount: items.reduce((sum, item) => sum + item.totalCount, 0),
+  };
 }
 
 async function getReferenceArea(
@@ -577,6 +659,9 @@ export async function findNearestFeatureTool(
       );
 
       if (!totalScopedCount) {
+        session.lastQueryResult = null;
+        session.lastMultiLayerQueryResult = null;
+
         scopedTargetLayers.forEach((targetLayer) => {
           targetLayer.visible = false;
           targetLayer.definitionExpression = "";
@@ -586,7 +671,9 @@ export async function findNearestFeatureTool(
         hideAdministrativeLayerOnMapKeepLegend(referenceArea.layer);
 
         return {
-          message: `No highway features were found inside ${referenceArea.sourceLabel}.`,
+          message: isHighwayLayerId(args.layerId)
+            ? `No highway features were found inside ${referenceArea.sourceLabel}.`
+            : `No features were found in ${layer.title} inside ${referenceArea.sourceLabel}.`,
           data: null,
         };
       }
@@ -599,6 +686,25 @@ export async function findNearestFeatureTool(
           result.layer.definitionExpression = "";
         }
       });
+
+            const scopedQueryResults = scopedResults
+        .filter((result) => result.objectIds.length > 0)
+        .map((result) =>
+          buildQueryResultDataFromFeatures(result.layer, result.features)
+        );
+
+      const scopeQueryResult = buildQueryResultDataFromFeatures(
+        referenceArea.layer,
+        [referenceArea.feature]
+      );
+
+      setScopedSessionResults(
+        session,
+        referenceArea.sourceLabel,
+        referenceArea.layer.id,
+        scopeQueryResult,
+        scopedQueryResults
+      );
 
       let bestFeature: GraphicType | null = null;
       let bestDistance: number | null = null;
@@ -692,6 +798,9 @@ export async function findNearestFeatureTool(
         data: null,
       };
     }
+
+    session.lastQueryResult = null;
+    session.lastMultiLayerQueryResult = null;
 
     restoreAdministrativeLayerPresentation(map);
 

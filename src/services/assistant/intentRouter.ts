@@ -576,6 +576,16 @@ function buildScopedLayerPlan(
     });
   }
 
+  plan.push({
+    tool: "queryAdministrativeLayer",
+    args: {
+      layerId: "bd-boundary",
+      withinName: area.targetName,
+      withinTypes: area.preferredTypes,
+      spatialRelationship: "intersects",
+    },
+  });
+
   const wantsTable =
     normalizeText(prompt).includes("open table") ||
     normalizeText(prompt).includes("open the table") ||

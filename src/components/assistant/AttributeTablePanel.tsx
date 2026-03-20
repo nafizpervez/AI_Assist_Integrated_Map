@@ -5,6 +5,8 @@ import type { AssistantAttributeTable } from "../../types/assistant";
 interface Props {
     table: AssistantAttributeTable | null;
     onClose: () => void;
+    renderInline?: boolean;
+    initialFullscreen?: boolean;
 }
 
 function IconButton({
@@ -342,8 +344,17 @@ function AttributeTableContent({
     );
 }
 
-export default function AttributeTablePanel({ table, onClose }: Props) {
-    const [isFullscreen, setIsFullscreen] = useState(false);
+export default function AttributeTablePanel({
+    table,
+    onClose,
+    renderInline = true,
+    initialFullscreen = false,
+}: Props) {
+    const [isFullscreen, setIsFullscreen] = useState(initialFullscreen);
+
+    useEffect(() => {
+        setIsFullscreen(initialFullscreen);
+    }, [initialFullscreen, table]);
 
     useEffect(() => {
         if (!isFullscreen) return;
@@ -351,6 +362,7 @@ export default function AttributeTablePanel({ table, onClose }: Props) {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
                 setIsFullscreen(false);
+                onClose();
             }
         };
 
@@ -358,31 +370,34 @@ export default function AttributeTablePanel({ table, onClose }: Props) {
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [isFullscreen]);
+    }, [isFullscreen, onClose]);
 
     if (!table) return null;
 
     const closeFullscreenOnly = () => {
         setIsFullscreen(false);
+        onClose();
     };
 
     return (
         <>
-            <div
-                style={{
-                    width: "100%",
-                    height: "100%",
-                    minHeight: 0,
-                    minWidth: 0,
-                }}
-            >
-                <AttributeTableContent
-                    table={table}
-                    onClose={onClose}
-                    showFullscreenButton={true}
-                    onOpenFullscreen={() => setIsFullscreen(true)}
-                />
-            </div>
+            {renderInline && (
+                <div
+                    style={{
+                        width: "100%",
+                        height: "100%",
+                        minHeight: 0,
+                        minWidth: 0,
+                    }}
+                >
+                    <AttributeTableContent
+                        table={table}
+                        onClose={onClose}
+                        showFullscreenButton={true}
+                        onOpenFullscreen={() => setIsFullscreen(true)}
+                    />
+                </div>
+            )}
 
             {isFullscreen && (
                 <div
