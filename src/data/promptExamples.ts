@@ -26,10 +26,10 @@ export const promptExamples = [
   "compare Khulna and Sulhet by rural population",
   "compare Sylhet and Rajshahi by density",
 
-  "find the nearest airport to Dhaka",
+  "find the nearest airport in Dhaka",
   "find the nearest bridge to Khulna division",
   "find the nearest port to Chattogram district",
-  "find the nearest railway to Savar upazila",
+  "find the nearest railway to Rajshahi division",
   "find the nearest airport to Gazipur",
   "find the nearest bridge to Rajshahi division",
   "find the nearest port to Barisal division",

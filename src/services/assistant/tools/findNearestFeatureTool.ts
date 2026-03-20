@@ -1,4 +1,4 @@
-import * as geometryEngine from "@arcgis/core/geometry/geometryEngine";
+import * as webMercatorUtils from "@arcgis/core/geometry/support/webMercatorUtils";
 
 import type {
   AssistantExecutionContext,
@@ -6,19 +6,30 @@ import type {
   AssistantToolResult,
   FindNearestFeatureArgs,
 } from "../toolTypes";
+import { execute as executeGeodeticDistance, isLoaded as isGeodeticDistanceLoaded, load as loadGeodeticDistance } from "@arcgis/core/geometry/operators/geodeticDistanceOperator";
 import {
   findAdministrativeFeature,
   getFeatureDisplayLabel,
   getFeatureLayerById,
+  getFeatureObjectIds,
+  getPopupFeatureFromLayer,
   queryAllFeatures,
+  queryFeaturesByGeometry,
+  setAdministrativeLayerVisibility,
+  setLayerFilterByObjectIds,
 } from "../../arcgis/query/featureSearch";
 
 import type { AdminLevel } from "../../arcgis/query/types";
 import type FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
-import type Graphic from "@arcgis/core/Graphic";
+import Graphic from "@arcgis/core/Graphic";
+import type GraphicType from "@arcgis/core/Graphic";
+import type Layer from "@arcgis/core/layers/Layer";
+import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
 import Point from "@arcgis/core/geometry/Point";
+import type Polygon from "@arcgis/core/geometry/Polygon";
+import type Polyline from "@arcgis/core/geometry/Polyline";
 import { normalizePlaceName } from "../../arcgis/query/textUtils";
 
 const DEFAULT_ADMIN_TYPES: AdminLevel[] = [
@@ -27,7 +38,103 @@ const DEFAULT_ADMIN_TYPES: AdminLevel[] = [
   "upazila",
 ];
 
-function getPointFromGeometry(graphic: Graphic): Point | null {
+const SCOPE_HIGHLIGHT_GRAPHIC_ID = "__assistant_scope_highlight__";
+
+function stripAdministrativeSuffix(value: string): string {
+  return value
+    .trim()
+    .replace(/\b(division|district|upazila|thana|bibhag|zila)\b/gi, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function isFeatureLayer(layer: Layer | null | undefined): layer is FeatureLayer {
+  return !!layer && layer.type === "feature";
+}
+
+function getOperationalLayers(map: Map): Layer[] {
+  return map.layers.toArray();
+}
+
+function clearAllOperationalDefinitionExpressions(map: Map): void {
+  getOperationalLayers(map).forEach((layer: Layer) => {
+    if (isFeatureLayer(layer) && layer.definitionExpression) {
+      layer.definitionExpression = "";
+    }
+  });
+}
+
+function setNearestScopedVisibility(
+  map: Map,
+  targetLayerId: string,
+  adminLayerId?: string
+): void {
+  const keepVisible = new Set<string>(["bd-boundary", targetLayerId]);
+
+  if (adminLayerId) {
+    keepVisible.add(adminLayerId);
+  }
+
+  getOperationalLayers(map).forEach((layer: Layer) => {
+    layer.visible = keepVisible.has(layer.id);
+  });
+}
+
+function removeScopeHighlightGraphic(view: MapView): void {
+  const graphicsToRemove = view.graphics
+    .toArray()
+    .filter(
+      (graphic) =>
+        graphic.attributes?.__assistantGraphicId === SCOPE_HIGHLIGHT_GRAPHIC_ID
+    );
+
+  graphicsToRemove.forEach((graphic) => {
+    view.graphics.remove(graphic);
+  });
+}
+
+function createScopeHighlightGraphic(feature: GraphicType): Graphic | null {
+  const geometry = feature.geometry;
+
+  if (!geometry) {
+    return null;
+  }
+
+  if (geometry.type === "polygon") {
+    return new Graphic({
+      geometry: geometry as Polygon,
+      attributes: {
+        __assistantGraphicId: SCOPE_HIGHLIGHT_GRAPHIC_ID,
+      },
+      symbol: {
+        type: "simple-fill",
+        color: [0, 255, 255, 0.1],
+        outline: {
+          color: [0, 255, 255, 1],
+          width: 1,
+        },
+      },
+    });
+  }
+
+  if (geometry.type === "polyline") {
+    return new Graphic({
+      geometry: geometry as Polyline,
+      attributes: {
+        __assistantGraphicId: SCOPE_HIGHLIGHT_GRAPHIC_ID,
+      },
+      symbol: {
+        type: "simple-line",
+        color: [0, 255, 255, 1],
+        width: 3,
+      },
+    });
+  }
+
+  return null;
+}
+
+function getPointFromGeometry(graphic: GraphicType): Point | null {
   const geometry = graphic.geometry;
 
   if (!geometry) {
@@ -49,40 +156,64 @@ function getPointFromGeometry(graphic: Graphic): Point | null {
   return null;
 }
 
-async function getReferencePoint(
+async function getReferenceArea(
+  context: AssistantExecutionContext,
+  args: FindNearestFeatureArgs
+): Promise<{
+  areaType: AdminLevel;
+  feature: GraphicType;
+  layer: FeatureLayer;
+  point: Point;
+  sourceLabel: string;
+} | null> {
+  const { map } = context;
+
+  if (!args.targetName || !map) {
+    return null;
+  }
+
+  const cleanedTarget = stripAdministrativeSuffix(args.targetName);
+  const normalizedTarget = normalizePlaceName(cleanedTarget);
+
+  const preferredTypes: AdminLevel[] =
+    args.preferredAdminTypes && args.preferredAdminTypes.length
+      ? [...args.preferredAdminTypes]
+      : DEFAULT_ADMIN_TYPES;
+
+  for (const areaType of preferredTypes) {
+    const matched = await findAdministrativeFeature(
+      map,
+      areaType,
+      normalizedTarget
+    );
+
+    if (!matched) {
+      continue;
+    }
+
+    const point = getPointFromGeometry(matched.feature);
+
+    if (!point) {
+      continue;
+    }
+
+    return {
+      areaType,
+      feature: matched.feature,
+      layer: matched.layer,
+      point,
+      sourceLabel: `${areaType} "${normalizedTarget}"`,
+    };
+  }
+
+  return null;
+}
+
+async function getFallbackReferencePoint(
   context: AssistantExecutionContext,
   args: FindNearestFeatureArgs
 ): Promise<{ point: Point; sourceLabel: string } | null> {
-  const { map, session, view } = context;
-
-  if (args.targetName && map) {
-    const normalizedTarget = normalizePlaceName(args.targetName);
-    const preferredTypes: AdminLevel[] =
-      args.preferredAdminTypes && args.preferredAdminTypes.length
-        ? [...args.preferredAdminTypes]
-        : DEFAULT_ADMIN_TYPES;
-
-    for (const areaType of preferredTypes) {
-      const matched = await findAdministrativeFeature(
-        map,
-        areaType,
-        normalizedTarget
-      );
-
-      if (!matched) {
-        continue;
-      }
-
-      const point = getPointFromGeometry(matched.feature);
-
-      if (point) {
-        return {
-          point,
-          sourceLabel: `${areaType} "${normalizedTarget}"`,
-        };
-      }
-    }
-  }
+  const { session, view } = context;
 
   if (args.useMapPoint !== false && session.lastClickedPoint) {
     return {
@@ -105,7 +236,7 @@ async function getReferencePoint(
   return null;
 }
 
-function getCandidatePoint(feature: Graphic): Point | null {
+function getCandidatePoint(feature: GraphicType): Point | null {
   const geometry = feature.geometry;
 
   if (!geometry) {
@@ -127,6 +258,38 @@ function getCandidatePoint(feature: Graphic): Point | null {
   return null;
 }
 
+function normalizePointForDistance(point: Point): Point {
+  if (point.spatialReference?.isWGS84) {
+    return point;
+  }
+
+  if (point.spatialReference?.isWebMercator) {
+    return webMercatorUtils.webMercatorToGeographic(point) as Point;
+  }
+
+  return point;
+}
+
+async function getDistanceInKm(fromPoint: Point, toPoint: Point): Promise<number | null> {
+  const from = normalizePointForDistance(fromPoint);
+  const to = normalizePointForDistance(toPoint);
+
+  if (!from || !to) {
+    return null;
+  }
+
+  if (!isGeodeticDistanceLoaded()) {
+    await loadGeodeticDistance();
+  }
+
+  const distance = executeGeodeticDistance(from, to, {
+    unit: "kilometers",
+    curveType: "geodesic",
+  });
+
+  return Number.isFinite(distance) ? distance : null;
+}
+
 function formatDistance(value: number | null): string {
   if (value === null || !Number.isFinite(value)) {
     return "N/A";
@@ -138,7 +301,7 @@ function formatDistance(value: number | null): string {
 async function applyHighlight(
   view: MapView,
   layer: FeatureLayer,
-  graphic: Graphic,
+  graphic: GraphicType,
   session: AssistantExecutionContext["session"]
 ): Promise<void> {
   const objectIdField =
@@ -160,13 +323,95 @@ async function applyHighlight(
   }
 }
 
+function bringLayerToFront(view: MapView, layer: FeatureLayer): void {
+  const map = view.map;
+  if (!map) return;
+
+  const currentIndex = map.layers.indexOf(layer);
+  const topIndex = map.layers.length - 1;
+
+  if (currentIndex >= 0 && currentIndex !== topIndex) {
+    map.reorder(layer, topIndex);
+  }
+}
+
+function getGoToTargetFromGraphic(
+  graphic: GraphicType
+): Parameters<MapView["goTo"]>[0] | null {
+  const geometry = graphic.geometry;
+
+  if (!geometry) {
+    return null;
+  }
+
+  if (geometry.type === "point") {
+    return {
+      target: geometry,
+      zoom: 12,
+    };
+  }
+
+  if ("extent" in geometry && geometry.extent) {
+    return geometry.extent.clone().expand(1.2);
+  }
+
+  return {
+    target: geometry,
+  };
+}
+
+async function safeGoTo(
+  view: MapView,
+  target: Parameters<MapView["goTo"]>[0]
+): Promise<void> {
+  await view.when();
+
+  try {
+    await view.goTo(target, {
+      duration: 1200,
+      easing: "ease-in-out",
+    });
+  } catch (error) {
+    const err = error as Error;
+    if (err?.name !== "AbortError") {
+      throw error;
+    }
+  }
+}
+
+async function zoomToBoundaryScope(
+  view: MapView,
+  boundaryFeature: GraphicType
+): Promise<void> {
+  const target = getGoToTargetFromGraphic(boundaryFeature);
+
+  if (!target) {
+    return;
+  }
+
+  await safeGoTo(view, target);
+}
+
+async function zoomToNearestResult(
+  view: MapView,
+  feature: GraphicType
+): Promise<void> {
+  const target = getGoToTargetFromGraphic(feature);
+
+  if (!target) {
+    return;
+  }
+
+  await safeGoTo(view, target);
+}
+
 export async function findNearestFeatureTool(
   rawArgs: AssistantToolArgs,
   context: AssistantExecutionContext,
   _previousResults: AssistantToolResult[]
 ): Promise<Omit<AssistantToolResult, "tool" | "success">> {
   const args = rawArgs as FindNearestFeatureArgs;
-  const { map, view } = context;
+  const { map, view, session } = context;
 
   if (!map || !view) {
     return {
@@ -184,23 +429,150 @@ export async function findNearestFeatureTool(
     };
   }
 
-  const reference = await getReferencePoint(context, args);
-
-  if (!reference) {
-    return {
-      message:
-        "No usable reference point is available yet. Provide a district/division/upazila, click the map, or move the map.",
-      data: null,
-    };
-  }
-
   try {
     await layer.load();
+
+    const referenceArea = await getReferenceArea(context, args);
+
+    clearAllOperationalDefinitionExpressions(map);
+    removeScopeHighlightGraphic(view);
+
+    if (referenceArea) {
+      await referenceArea.layer.load();
+
+      setAdministrativeLayerVisibility(map, referenceArea.areaType);
+      referenceArea.layer.visible = true;
+      layer.visible = true;
+
+      setNearestScopedVisibility(map, layer.id, referenceArea.layer.id);
+      bringLayerToFront(view, referenceArea.layer);
+      bringLayerToFront(view, layer);
+
+      const scopeGraphic = createScopeHighlightGraphic(referenceArea.feature);
+      if (scopeGraphic) {
+        view.graphics.add(scopeGraphic);
+      }
+
+      const scopedFeatures = await queryFeaturesByGeometry(
+        layer,
+        referenceArea.feature.geometry!,
+        "intersects"
+      );
+
+      const scopedObjectIds = getFeatureObjectIds(scopedFeatures, layer);
+
+      if (!scopedObjectIds.length) {
+        layer.visible = false;
+        layer.definitionExpression = "";
+
+        await zoomToBoundaryScope(view, referenceArea.feature);
+
+        return {
+          message: `No ${layer.title} features were found inside ${referenceArea.sourceLabel}.`,
+          data: null,
+        };
+      }
+
+      setLayerFilterByObjectIds(layer, scopedObjectIds);
+
+      let bestFeature: GraphicType | null = null;
+      let bestDistance: number | null = null;
+
+      for (const feature of scopedFeatures) {
+        const candidatePoint = getCandidatePoint(feature);
+
+        if (!candidatePoint) {
+          continue;
+        }
+
+        const distance = await getDistanceInKm(referenceArea.point, candidatePoint);
+
+        if (distance === null || !Number.isFinite(distance)) {
+          continue;
+        }
+
+        if (bestDistance === null || distance < bestDistance) {
+          bestDistance = distance;
+          bestFeature = feature;
+        }
+      }
+
+      if (!bestFeature || bestDistance === null) {
+        await zoomToBoundaryScope(view, referenceArea.feature);
+
+        return {
+          message: `No nearby feature could be determined from the "${layer.title}" layer inside ${referenceArea.sourceLabel}.`,
+          data: null,
+        };
+      }
+
+      await zoomToBoundaryScope(view, referenceArea.feature);
+      await applyHighlight(view, layer, bestFeature, session);
+
+      const popupFeature = await getPopupFeatureFromLayer(
+        layer,
+        bestFeature,
+        view
+      );
+
+      await view.openPopup({
+        features: [popupFeature],
+      });
+
+      const objectIdField =
+        layer.objectIdField ||
+        layer.fields?.find((field) => field.type === "oid")?.name;
+      const selectedObjectId =
+        objectIdField && bestFeature.attributes?.[objectIdField] != null
+          ? Number(bestFeature.attributes[objectIdField])
+          : null;
+
+      if (selectedObjectId !== null && Number.isFinite(selectedObjectId)) {
+        session.lastSelectedFeature = {
+          layerId: layer.id,
+          objectIds: [selectedObjectId],
+        };
+      }
+
+      const label = getFeatureDisplayLabel(bestFeature);
+
+      return {
+        message: [
+          `The nearest feature was found in ${layer.title}.`,
+          "",
+          `Reference: ${referenceArea.sourceLabel}`,
+          `Layer: ${layer.title}`,
+          `Nearest Feature: ${label}`,
+          `Distance: ${formatDistance(bestDistance)}`,
+          `Scoped Features Shown: ${scopedFeatures.length}`,
+        ].join("\n"),
+        data: {
+          layerId: layer.id,
+          title: layer.title,
+          label,
+          distanceKm: bestDistance,
+          reference: referenceArea.sourceLabel,
+          scopedCount: scopedFeatures.length,
+        },
+      };
+    }
+
+    const fallbackReference = await getFallbackReferencePoint(context, args);
+
+    if (!fallbackReference) {
+      return {
+        message:
+          "No usable reference point is available yet. Provide a district/division/upazila, click the map, or move the map.",
+        data: null,
+      };
+    }
+
     layer.visible = true;
+    bringLayerToFront(view, layer);
 
     const features = await queryAllFeatures(layer);
 
-    let bestFeature: Graphic | null = null;
+    let bestFeature: GraphicType | null = null;
     let bestDistance: number | null = null;
 
     for (const feature of features) {
@@ -210,10 +582,9 @@ export async function findNearestFeatureTool(
         continue;
       }
 
-      const distance = geometryEngine.distance(
-        reference.point,
-        candidatePoint,
-        "kilometers"
+      const distance = await getDistanceInKm(
+        fallbackReference.point,
+        candidatePoint
       );
 
       if (distance === null || !Number.isFinite(distance)) {
@@ -233,13 +604,34 @@ export async function findNearestFeatureTool(
       };
     }
 
-    await view.goTo(bestFeature, {
-      duration: 900,
-    });
-    await applyHighlight(view, layer, bestFeature, context.session);
+    await zoomToNearestResult(view, bestFeature);
+    await applyHighlight(view, layer, bestFeature, session);
+
+    const popupFeature = await getPopupFeatureFromLayer(
+      layer,
+      bestFeature,
+      view
+    );
+
     await view.openPopup({
-      features: [bestFeature],
+      features: [popupFeature],
     });
+
+    const objectIdField =
+      layer.objectIdField ||
+      layer.fields?.find((field) => field.type === "oid")?.name;
+    const selectedObjectId =
+      objectIdField && bestFeature.attributes?.[objectIdField] != null
+        ? Number(bestFeature.attributes[objectIdField])
+        : null;
+
+    session.lastSelectedFeature = {
+      layerId: layer.id,
+      objectIds:
+        selectedObjectId !== null && Number.isFinite(selectedObjectId)
+          ? [selectedObjectId]
+          : [],
+    };
 
     const label = getFeatureDisplayLabel(bestFeature);
 
@@ -247,7 +639,7 @@ export async function findNearestFeatureTool(
       message: [
         `The nearest feature was found in ${layer.title}.`,
         "",
-        `Reference: ${reference.sourceLabel}`,
+        `Reference: ${fallbackReference.sourceLabel}`,
         `Layer: ${layer.title}`,
         `Nearest Feature: ${label}`,
         `Distance: ${formatDistance(bestDistance)}`,
@@ -257,7 +649,7 @@ export async function findNearestFeatureTool(
         title: layer.title,
         label,
         distanceKm: bestDistance,
-        reference: reference.sourceLabel,
+        reference: fallbackReference.sourceLabel,
       },
     };
   } catch (error) {

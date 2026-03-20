@@ -238,19 +238,24 @@ function extractWeatherTargetName(prompt: string): string | undefined {
 }
 
 function detectNearestLayerId(prompt: string): string | null {
-  const direct = resolveSupportedLayerFromPrompt(prompt);
+  const direct = resolveSupportedLayerFromPrompt(
+    prompt,
+    (layer) => layer.category === "operational"
+  );
   if (direct) {
     return direct.id;
   }
 
   const normalized = normalizeText(prompt);
 
-  const allAliases = supportedLayers.flatMap((layer) =>
-    layer.aliases.map((alias) => ({
-      layerId: layer.id,
-      alias,
-    }))
-  );
+  const allAliases = supportedLayers
+    .filter((layer) => layer.category === "operational")
+    .flatMap((layer) =>
+      layer.aliases.map((alias) => ({
+        layerId: layer.id,
+        alias,
+      }))
+    );
 
   const fuzzy = findBestFuzzyMatch(
     normalized,
@@ -802,4 +807,3 @@ export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
 
   return [];
 }
-
