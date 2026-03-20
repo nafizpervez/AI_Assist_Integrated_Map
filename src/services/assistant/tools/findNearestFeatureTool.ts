@@ -6,13 +6,16 @@ import type {
   AssistantToolResult,
   FindNearestFeatureArgs,
 } from "../toolTypes";
-import { execute as executeGeodeticDistance, isLoaded as isGeodeticDistanceLoaded, load as loadGeodeticDistance } from "@arcgis/core/geometry/operators/geodeticDistanceOperator";
+import {
+  execute as executeGeodeticDistance,
+  isLoaded as isGeodeticDistanceLoaded,
+  load as loadGeodeticDistance,
+} from "@arcgis/core/geometry/operators/geodeticDistanceOperator";
 import {
   findAdministrativeFeature,
   getFeatureDisplayLabel,
   getFeatureLayerById,
   getFeatureObjectIds,
-  getPopupFeatureFromLayer,
   queryAllFeatures,
   queryFeaturesByGeometry,
   setAdministrativeLayerVisibility,
@@ -56,6 +59,41 @@ function getOperationalLayers(map: Map): Layer[] {
   return map.layers.toArray();
 }
 
+function isHighwayLayerId(layerId: string): boolean {
+  const normalized = layerId.trim().toLowerCase();
+
+  return (
+    normalized.includes("national") ||
+    normalized.includes("regional") ||
+    normalized.includes("highway")
+  );
+}
+
+function getScopedTargetLayers(map: Map, targetLayerId: string): FeatureLayer[] {
+  const operationalLayers = getOperationalLayers(map);
+
+  if (!isHighwayLayerId(targetLayerId)) {
+    const singleLayer = getFeatureLayerById(map, targetLayerId);
+    return singleLayer ? [singleLayer] : [];
+  }
+
+  return operationalLayers.filter((layer): layer is FeatureLayer => {
+    if (!isFeatureLayer(layer)) {
+      return false;
+    }
+
+    const idText = layer.id.toLowerCase();
+    const titleText = (layer.title || "").toLowerCase();
+
+    return (
+      idText.includes("national") ||
+      idText.includes("regional") ||
+      titleText.includes("national highway") ||
+      titleText.includes("regional highway")
+    );
+  });
+}
+
 function clearAllOperationalDefinitionExpressions(map: Map): void {
   getOperationalLayers(map).forEach((layer: Layer) => {
     if (isFeatureLayer(layer) && layer.definitionExpression) {
@@ -66,10 +104,10 @@ function clearAllOperationalDefinitionExpressions(map: Map): void {
 
 function setNearestScopedVisibility(
   map: Map,
-  targetLayerId: string,
+  targetLayerIds: string[],
   adminLayerId?: string
 ): void {
-  const keepVisible = new Set<string>(["bd-boundary", targetLayerId]);
+  const keepVisible = new Set<string>(["bd-boundary", ...targetLayerIds]);
 
   if (adminLayerId) {
     keepVisible.add(adminLayerId);
@@ -270,7 +308,10 @@ function normalizePointForDistance(point: Point): Point {
   return point;
 }
 
-async function getDistanceInKm(fromPoint: Point, toPoint: Point): Promise<number | null> {
+async function getDistanceInKm(
+  fromPoint: Point,
+  toPoint: Point
+): Promise<number | null> {
   const from = normalizePointForDistance(fromPoint);
   const to = normalizePointForDistance(toPoint);
 
@@ -320,6 +361,15 @@ async function applyHighlight(
   if (Number.isFinite(objectId)) {
     const layerView = (await view.whenLayerView(layer)) as FeatureLayerView;
     session.activeHighlightHandle = layerView.highlight([objectId]);
+  }
+}
+
+function clearActiveHighlight(
+  session: AssistantExecutionContext["session"]
+): void {
+  if (session.activeHighlightHandle) {
+    session.activeHighlightHandle.remove();
+    session.activeHighlightHandle = null;
   }
 }
 
@@ -429,130 +479,176 @@ export async function findNearestFeatureTool(
     };
   }
 
+  const scopedTargetLayers = getScopedTargetLayers(map, args.layerId);
+
+  if (!scopedTargetLayers.length) {
+    return {
+      message: `Could not resolve scoped layers for "${args.layerId}".`,
+      data: null,
+    };
+  }
+
   try {
-    await layer.load();
+    await Promise.all(scopedTargetLayers.map((targetLayer) => targetLayer.load()));
 
     const referenceArea = await getReferenceArea(context, args);
 
     clearAllOperationalDefinitionExpressions(map);
     removeScopeHighlightGraphic(view);
+    clearActiveHighlight(session);
 
     if (referenceArea) {
       await referenceArea.layer.load();
 
       setAdministrativeLayerVisibility(map, referenceArea.areaType);
       referenceArea.layer.visible = true;
-      layer.visible = true;
 
-      setNearestScopedVisibility(map, layer.id, referenceArea.layer.id);
+      scopedTargetLayers.forEach((targetLayer) => {
+        targetLayer.visible = true;
+      });
+
+      setNearestScopedVisibility(
+        map,
+        scopedTargetLayers.map((targetLayer) => targetLayer.id),
+        referenceArea.layer.id
+      );
+
       bringLayerToFront(view, referenceArea.layer);
-      bringLayerToFront(view, layer);
+
+      scopedTargetLayers.forEach((targetLayer) => {
+        bringLayerToFront(view, targetLayer);
+      });
 
       const scopeGraphic = createScopeHighlightGraphic(referenceArea.feature);
       if (scopeGraphic) {
         view.graphics.add(scopeGraphic);
       }
 
-      const scopedFeatures = await queryFeaturesByGeometry(
-        layer,
-        referenceArea.feature.geometry!,
-        "intersects"
+      const scopedResults = await Promise.all(
+        scopedTargetLayers.map(async (targetLayer) => {
+          const features = await queryFeaturesByGeometry(
+            targetLayer,
+            referenceArea.feature.geometry!,
+            "intersects"
+          );
+
+          const objectIds = getFeatureObjectIds(features, targetLayer);
+
+          return {
+            layer: targetLayer,
+            features,
+            objectIds,
+          };
+        })
       );
 
-      const scopedObjectIds = getFeatureObjectIds(scopedFeatures, layer);
+      const totalScopedCount = scopedResults.reduce(
+        (sum, result) => sum + result.objectIds.length,
+        0
+      );
 
-      if (!scopedObjectIds.length) {
-        layer.visible = false;
-        layer.definitionExpression = "";
+      if (!totalScopedCount) {
+        scopedTargetLayers.forEach((targetLayer) => {
+          targetLayer.visible = false;
+          targetLayer.definitionExpression = "";
+        });
 
         await zoomToBoundaryScope(view, referenceArea.feature);
 
         return {
-          message: `No ${layer.title} features were found inside ${referenceArea.sourceLabel}.`,
+          message: `No highway features were found inside ${referenceArea.sourceLabel}.`,
           data: null,
         };
       }
 
-      setLayerFilterByObjectIds(layer, scopedObjectIds);
+      scopedResults.forEach((result) => {
+        if (result.objectIds.length) {
+          setLayerFilterByObjectIds(result.layer, result.objectIds);
+        } else {
+          result.layer.visible = false;
+          result.layer.definitionExpression = "";
+        }
+      });
 
       let bestFeature: GraphicType | null = null;
       let bestDistance: number | null = null;
+      let bestFeatureLayer: FeatureLayer | null = null;
 
-      for (const feature of scopedFeatures) {
-        const candidatePoint = getCandidatePoint(feature);
+      for (const result of scopedResults) {
+        for (const feature of result.features) {
+          const candidatePoint = getCandidatePoint(feature);
 
-        if (!candidatePoint) {
-          continue;
+          if (!candidatePoint) {
+            continue;
+          }
+
+          const distance = await getDistanceInKm(referenceArea.point, candidatePoint);
+
+          if (distance === null || !Number.isFinite(distance)) {
+            continue;
+          }
+
+          if (bestDistance === null || distance < bestDistance) {
+            bestDistance = distance;
+            bestFeature = feature;
+            bestFeatureLayer = result.layer;
+          }
         }
-
-        const distance = await getDistanceInKm(referenceArea.point, candidatePoint);
-
-        if (distance === null || !Number.isFinite(distance)) {
-          continue;
-        }
-
-        if (bestDistance === null || distance < bestDistance) {
-          bestDistance = distance;
-          bestFeature = feature;
-        }
-      }
-
-      if (!bestFeature || bestDistance === null) {
-        await zoomToBoundaryScope(view, referenceArea.feature);
-
-        return {
-          message: `No nearby feature could be determined from the "${layer.title}" layer inside ${referenceArea.sourceLabel}.`,
-          data: null,
-        };
       }
 
       await zoomToBoundaryScope(view, referenceArea.feature);
-      await applyHighlight(view, layer, bestFeature, session);
 
-      const popupFeature = await getPopupFeatureFromLayer(
-        layer,
-        bestFeature,
-        view
-      );
+      referenceArea.layer.visible = false;
 
-      await view.openPopup({
-        features: [popupFeature],
-      });
+      if (bestFeature && bestFeatureLayer) {
+        const objectIdField =
+          bestFeatureLayer.objectIdField ||
+          bestFeatureLayer.fields?.find((field) => field.type === "oid")?.name;
+        const selectedObjectId =
+          objectIdField && bestFeature.attributes?.[objectIdField] != null
+            ? Number(bestFeature.attributes[objectIdField])
+            : null;
 
-      const objectIdField =
-        layer.objectIdField ||
-        layer.fields?.find((field) => field.type === "oid")?.name;
-      const selectedObjectId =
-        objectIdField && bestFeature.attributes?.[objectIdField] != null
-          ? Number(bestFeature.attributes[objectIdField])
-          : null;
-
-      if (selectedObjectId !== null && Number.isFinite(selectedObjectId)) {
-        session.lastSelectedFeature = {
-          layerId: layer.id,
-          objectIds: [selectedObjectId],
-        };
+        if (selectedObjectId !== null && Number.isFinite(selectedObjectId)) {
+          session.lastSelectedFeature = {
+            layerId: bestFeatureLayer.id,
+            objectIds: [selectedObjectId],
+          };
+        }
       }
 
-      const label = getFeatureDisplayLabel(bestFeature);
+      const nearestLabel = bestFeature
+        ? getFeatureDisplayLabel(bestFeature)
+        : null;
 
       return {
         message: [
-          `The nearest feature was found in ${layer.title}.`,
+          isHighwayLayerId(args.layerId)
+            ? `Features were shown from National Highways and Regional Highways inside ${referenceArea.sourceLabel}.`
+            : `Features were shown from ${layer.title} inside ${referenceArea.sourceLabel}.`,
           "",
           `Reference: ${referenceArea.sourceLabel}`,
-          `Layer: ${layer.title}`,
-          `Nearest Feature: ${label}`,
-          `Distance: ${formatDistance(bestDistance)}`,
-          `Scoped Features Shown: ${scopedFeatures.length}`,
-        ].join("\n"),
+          isHighwayLayerId(args.layerId)
+            ? `Layers: National Highways, Regional Highways`
+            : `Layer: ${layer.title}`,
+          `Visible Features: ${totalScopedCount}`,
+          nearestLabel ? `Nearest Feature: ${nearestLabel}` : null,
+          bestDistance !== null
+            ? `Nearest Distance: ${formatDistance(bestDistance)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
         data: {
-          layerId: layer.id,
-          title: layer.title,
-          label,
-          distanceKm: bestDistance,
+          layerId: bestFeatureLayer?.id ?? layer.id,
+          title: isHighwayLayerId(args.layerId)
+            ? "National Highways + Regional Highways"
+            : layer.title,
           reference: referenceArea.sourceLabel,
-          scopedCount: scopedFeatures.length,
+          visibleCount: totalScopedCount,
+          nearestLabel,
+          distanceKm: bestDistance,
+          objectIds: scopedResults.flatMap((result) => result.objectIds),
         },
       };
     }
@@ -606,16 +702,6 @@ export async function findNearestFeatureTool(
 
     await zoomToNearestResult(view, bestFeature);
     await applyHighlight(view, layer, bestFeature, session);
-
-    const popupFeature = await getPopupFeatureFromLayer(
-      layer,
-      bestFeature,
-      view
-    );
-
-    await view.openPopup({
-      features: [popupFeature],
-    });
 
     const objectIdField =
       layer.objectIdField ||
