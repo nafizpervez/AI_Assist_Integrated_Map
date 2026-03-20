@@ -374,7 +374,8 @@ function isGenericAdministrativeLocationPrompt(normalized: string): boolean {
     normalized.startsWith("locate ") ||
     normalized.startsWith("zoom to ") ||
     normalized.startsWith("go to ") ||
-    normalized.startsWith("show me ")
+    normalized.startsWith("show me ") ||
+    normalized.startsWith("show ")
   );
 }
 
@@ -553,6 +554,7 @@ function buildScopedLayerPlan(
       args: {
         layerIds,
         visible: true,
+        preserveHighlight: true,
       },
     },
   ];
@@ -800,3 +802,4 @@ export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
 
   return [];
 }
+

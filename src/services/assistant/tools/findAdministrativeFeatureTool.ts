@@ -19,7 +19,12 @@ import {
 import type { AdminLevel } from "../../arcgis/query/types";
 import type FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
-import type Graphic from "@arcgis/core/Graphic";
+import Graphic from "@arcgis/core/Graphic";
+import type MapView from "@arcgis/core/views/MapView";
+import type Polygon from "@arcgis/core/geometry/Polygon";
+import type Polyline from "@arcgis/core/geometry/Polyline";
+
+const SCOPE_HIGHLIGHT_GRAPHIC_ID = "__assistant_scope_highlight__";
 
 function normalizeTableValue(
   value: unknown
@@ -77,6 +82,57 @@ function toAdminLabel(areaType: AdminLevel): string {
   return "Upazila";
 }
 
+function removeScopeHighlightGraphic(view: MapView): void {
+  const graphicsToRemove = view.graphics
+    .toArray()
+    .filter((graphic) => graphic.attributes?.__assistantGraphicId === SCOPE_HIGHLIGHT_GRAPHIC_ID);
+
+  graphicsToRemove.forEach((graphic) => {
+    view.graphics.remove(graphic);
+  });
+}
+
+function createScopeHighlightGraphic(feature: Graphic): Graphic | null {
+  const geometry = feature.geometry;
+
+  if (!geometry) {
+    return null;
+  }
+
+  if (geometry.type === "polygon") {
+    return new Graphic({
+      geometry: geometry as Polygon,
+      attributes: {
+        __assistantGraphicId: SCOPE_HIGHLIGHT_GRAPHIC_ID,
+      },
+      symbol: {
+        type: "simple-fill",
+        color: [255, 0, 0, 0.08],
+        outline: {
+          color: [255, 0, 0, 1],
+          width: 3,
+        },
+      },
+    });
+  }
+
+  if (geometry.type === "polyline") {
+    return new Graphic({
+      geometry: geometry as Polyline,
+      attributes: {
+        __assistantGraphicId: SCOPE_HIGHLIGHT_GRAPHIC_ID,
+      },
+      symbol: {
+        type: "simple-line",
+        color: [255, 0, 0, 1],
+        width: 4,
+      },
+    });
+  }
+
+  return null;
+}
+
 export async function findAdministrativeFeatureTool(
   rawArgs: AssistantToolArgs,
   context: AssistantExecutionContext,
@@ -129,6 +185,8 @@ export async function findAdministrativeFeatureTool(
         session.activeHighlightHandle = null;
       }
 
+      removeScopeHighlightGraphic(view);
+
       await view.goTo(matched.feature, {
         duration: 900,
       });
@@ -140,6 +198,11 @@ export async function findAdministrativeFeatureTool(
         )) as FeatureLayerView;
 
         session.activeHighlightHandle = layerView.highlight([objectId]);
+      }
+
+      const scopeGraphic = createScopeHighlightGraphic(matched.feature);
+      if (scopeGraphic) {
+        view.graphics.add(scopeGraphic);
       }
 
       await view.openPopup({

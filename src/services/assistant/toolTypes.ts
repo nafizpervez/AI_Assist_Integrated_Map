@@ -91,6 +91,7 @@ export interface RankAdministrativeRegionsArgs {
 export interface SetLayerVisibilityArgs {
   layerIds: string[];
   visible: boolean;
+  preserveHighlight?: boolean;
 }
 
 export interface ResetMapArgs {

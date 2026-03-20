@@ -6,8 +6,11 @@ import type {
 } from "../toolTypes";
 
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
+import type Graphic from "@arcgis/core/Graphic";
 import type Layer from "@arcgis/core/layers/Layer";
 import type Map from "@arcgis/core/Map";
+
+const SCOPE_HIGHLIGHT_GRAPHIC_ID = "__assistant_scope_highlight__";
 
 function normalizeText(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -77,6 +80,22 @@ function joinLayerTitles(layers: Layer[], fallbackIds: string[]): string {
   return fallbackIds.join(", ");
 }
 
+function removeScopeHighlightGraphic(
+  view: AssistantExecutionContext["view"]
+): void {
+  if (!view) {
+    return;
+  }
+
+  const graphicsToRemove = view.graphics
+    .toArray()
+    .filter((graphic: Graphic) => graphic.attributes?.__assistantGraphicId === SCOPE_HIGHLIGHT_GRAPHIC_ID);
+
+  graphicsToRemove.forEach((graphic) => {
+    view.graphics.remove(graphic);
+  });
+}
+
 export async function setLayerVisibilityTool(
   rawArgs: AssistantToolArgs,
   context: AssistantExecutionContext,
@@ -106,16 +125,20 @@ export async function setLayerVisibilityTool(
 
   clearAllOperationalDefinitionExpressions(map);
 
-  if (session.activeHighlightHandle) {
-    session.activeHighlightHandle.remove();
-    session.activeHighlightHandle = null;
-  }
+  if (!args.preserveHighlight) {
+    if (session.activeHighlightHandle) {
+      session.activeHighlightHandle.remove();
+      session.activeHighlightHandle = null;
+    }
 
-  if (view?.popup) {
-    if (typeof view.popup.close === "function") {
-      view.popup.close();
-    } else {
-      view.popup.visible = false;
+    removeScopeHighlightGraphic(view);
+
+    if (view?.popup) {
+      if (typeof view.popup.close === "function") {
+        view.popup.close();
+      } else {
+        view.popup.visible = false;
+      }
     }
   }
 
@@ -139,6 +162,7 @@ export async function setLayerVisibilityTool(
       layerIds: matchedLayers.map((layer) => layer.id),
       visible: args.visible,
       title,
+      preserveHighlight: !!args.preserveHighlight,
     },
   };
 }
