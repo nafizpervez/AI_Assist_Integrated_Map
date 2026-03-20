@@ -1,11 +1,18 @@
 import type {
   AssistantExecutionContext,
+  AssistantQueryResultData,
+  AssistantQueryRow,
   AssistantToolArgs,
   AssistantToolResult,
   SummarizeVisibleMapArgs,
 } from "../toolTypes";
+import {
+  getFeatureObjectIds,
+  queryAllFeatures,
+} from "../../arcgis/query/featureSearch";
 
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
+import type Graphic from "@arcgis/core/Graphic";
 import type Layer from "@arcgis/core/layers/Layer";
 
 function formatVisibleLayerSummary(
@@ -37,6 +44,105 @@ function formatAttributeTableSummary(titles: string[]): string {
   }
 
   return ` Visible attribute tables: ${titles.join(", ")}.`;
+}
+
+function normalizeTableValue(
+  value: unknown
+): string | number | boolean | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return String(value);
+}
+
+function toAssistantQueryRow(feature: Graphic): AssistantQueryRow {
+  const attributes = feature.attributes ?? {};
+  const row: AssistantQueryRow = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    row[key] = normalizeTableValue(value);
+  }
+
+  return row;
+}
+
+function buildQueryResultDataFromFeatures(
+  layer: FeatureLayer,
+  features: Graphic[]
+): AssistantQueryResultData {
+  const rows = features.map(toAssistantQueryRow);
+  const columns =
+    rows[0] != null
+      ? Object.keys(rows[0])
+      : layer.fields?.map((field) => field.name).filter(Boolean) ?? [];
+
+  return {
+    layerId: layer.id,
+    title: layer.title?.trim() || layer.id,
+    columns,
+    rows,
+    totalCount: rows.length,
+    objectIds: getFeatureObjectIds(features, layer),
+  };
+}
+
+async function syncVisibleLayerTablesToSession(
+  context: AssistantExecutionContext
+): Promise<void> {
+  const { map, session } = context;
+
+  if (!map) {
+    session.lastQueryResult = null;
+    session.lastMultiLayerQueryResult = null;
+    return;
+  }
+
+  const visibleFeatureLayers = map.layers
+    .toArray()
+    .filter((layer): layer is FeatureLayer => isVisibleLayer(layer) && isFeatureLayer(layer));
+
+  if (!visibleFeatureLayers.length) {
+    session.lastQueryResult = null;
+    session.lastMultiLayerQueryResult = null;
+    return;
+  }
+
+  const items: AssistantQueryResultData[] = [];
+
+  for (const layer of visibleFeatureLayers) {
+    await layer.load();
+    const features = await queryAllFeatures(layer);
+    items.push(buildQueryResultDataFromFeatures(layer, features));
+  }
+
+  context.session.lastQueryResult = items[0] ?? null;
+  context.session.lastMultiLayerQueryResult = {
+    scopeName: "Visible Layers",
+    scopeLayerId: items[0]?.layerId,
+    items: items.map((item) => ({
+      layerId: item.layerId,
+      title: item.title,
+      totalCount: item.totalCount,
+      objectIds: item.objectIds,
+      columns: item.columns,
+      rows: item.rows,
+    })),
+    totalLayerCount: items.length,
+    totalFeatureCount: items.reduce((sum, item) => sum + item.totalCount, 0),
+  };
 }
 
 export async function summarizeVisibleMapTool(
@@ -73,6 +179,8 @@ export async function summarizeVisibleMapTool(
 
   const layerTitles = visibleLayers.map((layer) => layer.title);
   const attributeTableTitles = visibleFeatureLayers.map((layer) => layer.title);
+
+  await syncVisibleLayerTablesToSession(context);
 
   let extentSummary = "";
   let centerData: { latitude: number; longitude: number } | null = null;

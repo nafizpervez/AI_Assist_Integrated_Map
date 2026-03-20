@@ -1,9 +1,15 @@
 import type {
   AssistantExecutionContext,
+  AssistantQueryResultData,
+  AssistantQueryRow,
   AssistantToolArgs,
   AssistantToolResult,
   SetLayerVisibilityArgs,
 } from "../toolTypes";
+import {
+  getFeatureObjectIds,
+  queryAllFeatures,
+} from "../../arcgis/query/featureSearch";
 
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type Graphic from "@arcgis/core/Graphic";
@@ -89,11 +95,106 @@ function removeScopeHighlightGraphic(
 
   const graphicsToRemove = view.graphics
     .toArray()
-    .filter((graphic: Graphic) => graphic.attributes?.__assistantGraphicId === SCOPE_HIGHLIGHT_GRAPHIC_ID);
+    .filter(
+      (graphic: Graphic) =>
+        graphic.attributes?.__assistantGraphicId === SCOPE_HIGHLIGHT_GRAPHIC_ID
+    );
 
   graphicsToRemove.forEach((graphic) => {
     view.graphics.remove(graphic);
   });
+}
+
+function normalizeTableValue(
+  value: unknown
+): string | number | boolean | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return String(value);
+}
+
+function toAssistantQueryRow(feature: Graphic): AssistantQueryRow {
+  const attributes = feature.attributes ?? {};
+  const row: AssistantQueryRow = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    row[key] = normalizeTableValue(value);
+  }
+
+  return row;
+}
+
+function buildQueryResultDataFromFeatures(
+  layer: FeatureLayer,
+  features: Graphic[]
+): AssistantQueryResultData {
+  const rows = features.map(toAssistantQueryRow);
+  const columns =
+    rows[0] != null
+      ? Object.keys(rows[0])
+      : layer.fields?.map((field) => field.name).filter(Boolean) ?? [];
+
+  return {
+    layerId: layer.id,
+    title: layer.title?.trim() || layer.id,
+    columns,
+    rows,
+    totalCount: rows.length,
+    objectIds: getFeatureObjectIds(features, layer),
+  };
+}
+
+async function syncVisibleLayerTablesToSession(
+  map: Map,
+  session: AssistantExecutionContext["session"]
+): Promise<void> {
+  const visibleFeatureLayers = getOperationalLayers(map).filter(
+    (layer): layer is FeatureLayer => isFeatureLayer(layer) && layer.visible
+  );
+
+  if (!visibleFeatureLayers.length) {
+    session.lastQueryResult = null;
+    session.lastMultiLayerQueryResult = null;
+    return;
+  }
+
+  const items: AssistantQueryResultData[] = [];
+
+  for (const layer of visibleFeatureLayers) {
+    await layer.load();
+    const features = await queryAllFeatures(layer);
+    items.push(buildQueryResultDataFromFeatures(layer, features));
+  }
+
+  session.lastQueryResult = items[0] ?? null;
+  session.lastMultiLayerQueryResult = {
+    scopeName: "Visible Layers",
+    scopeLayerId: items[0]?.layerId,
+    items: items.map((item) => ({
+      layerId: item.layerId,
+      title: item.title,
+      totalCount: item.totalCount,
+      objectIds: item.objectIds,
+      columns: item.columns,
+      rows: item.rows,
+    })),
+    totalLayerCount: items.length,
+    totalFeatureCount: items.reduce((sum, item) => sum + item.totalCount, 0),
+  };
 }
 
 export async function setLayerVisibilityTool(
@@ -153,6 +254,8 @@ export async function setLayerVisibilityTool(
       layer.visible = false;
     });
   }
+
+  await syncVisibleLayerTablesToSession(map, session);
 
   const title = joinLayerTitles(matchedLayers, requestedLayerIds);
 
