@@ -156,10 +156,16 @@ export async function executeToolCalls(
         isAssistantQueryResultData(result.data)
       ) {
         context.session.lastQueryResult = result.data;
-        context.session.lastSelectedFeature = {
-          layerId: result.data.layerId,
-          objectIds: result.data.objectIds,
-        };
+
+        if (
+          call.tool === "rankAdministrativeRegions" &&
+          result.data.objectIds.length > 0
+        ) {
+          context.session.lastSelectedFeature = {
+            layerId: result.data.layerId,
+            objectIds: result.data.objectIds,
+          };
+        }
       }
 
       if (call.tool === "openAttributeTable" && result.data) {

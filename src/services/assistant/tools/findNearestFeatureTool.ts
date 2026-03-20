@@ -538,18 +538,6 @@ async function safeGoTo(
   }
 }
 
-async function zoomToBoundaryScope(
-  view: MapView,
-  boundaryFeature: GraphicType
-): Promise<void> {
-  const target = getGoToTargetFromGraphic(boundaryFeature);
-
-  if (!target) {
-    return;
-  }
-
-  await safeGoTo(view, target);
-}
 
 async function zoomToNearestResult(
   view: MapView,
@@ -610,6 +598,12 @@ export async function findNearestFeatureTool(
     if (referenceArea) {
       await referenceArea.layer.load();
 
+      const fixedScopeTarget = getGoToTargetFromGraphic(referenceArea.feature);
+
+      if (fixedScopeTarget) {
+        await safeGoTo(view, fixedScopeTarget);
+      }
+
       setAdministrativeLayerVisibility(map, referenceArea.areaType);
       referenceArea.layer.visible = true;
       referenceArea.layer.opacity = 1;
@@ -667,7 +661,6 @@ export async function findNearestFeatureTool(
           targetLayer.definitionExpression = "";
         });
 
-        await zoomToBoundaryScope(view, referenceArea.feature);
         hideAdministrativeLayerOnMapKeepLegend(referenceArea.layer);
 
         return {
@@ -687,7 +680,7 @@ export async function findNearestFeatureTool(
         }
       });
 
-            const scopedQueryResults = scopedResults
+      const scopedQueryResults = scopedResults
         .filter((result) => result.objectIds.length > 0)
         .map((result) =>
           buildQueryResultDataFromFeatures(result.layer, result.features)
@@ -731,8 +724,6 @@ export async function findNearestFeatureTool(
           }
         }
       }
-
-      await zoomToBoundaryScope(view, referenceArea.feature);
 
       hideAdministrativeLayerOnMapKeepLegend(referenceArea.layer);
 

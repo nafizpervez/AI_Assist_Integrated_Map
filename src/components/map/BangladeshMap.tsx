@@ -86,7 +86,7 @@ export default function BangladeshMap() {
                                     : null;
 
                             if (!clickedGraphic) {
-                                clearActiveHighlight();
+                                clearActiveHighlight(view);
 
                                 if (view.popup) {
                                     view.popup.close();
@@ -148,7 +148,7 @@ export default function BangladeshMap() {
             destroyed = true;
 
             clickHandle?.remove();
-            clearActiveHighlight();
+            clearActiveHighlight(viewInstance);
 
             setMapBundle({ map: null, view: null });
 

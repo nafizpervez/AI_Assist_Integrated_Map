@@ -1,5 +1,7 @@
 import type {
   AssistantExecutionContext,
+  AssistantQueryResultData,
+  AssistantQueryRow,
   AssistantToolArgs,
   AssistantToolResult,
   CompareRegionsArgs,
@@ -9,6 +11,7 @@ import {
   getDistrictLayer,
   getDivisionLayer,
   getFeatureObjectId,
+  getFeatureObjectIds,
   searchFeatureByField,
   setAdministrativeLayerVisibility,
 } from "../../arcgis/query/featureSearch";
@@ -158,6 +161,97 @@ function getFeatureName(feature: Graphic, type: "division" | "district"): string
   );
 }
 
+function normalizeTableValue(
+  value: unknown
+): string | number | boolean | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? value : null;
+  }
+
+  if (typeof value === "string") {
+    return value;
+  }
+
+  if (typeof value === "boolean") {
+    return value;
+  }
+
+  return String(value);
+}
+
+function toAssistantQueryRow(feature: Graphic): AssistantQueryRow {
+  const attributes = feature.attributes ?? {};
+  const row: AssistantQueryRow = {};
+
+  for (const [key, value] of Object.entries(attributes)) {
+    row[key] = normalizeTableValue(value);
+  }
+
+  return row;
+}
+
+function buildQueryResultDataFromFeatures(
+  layer: FeatureLayer,
+  features: Graphic[],
+  title?: string
+): AssistantQueryResultData {
+  const rows = features.map(toAssistantQueryRow);
+  const columns =
+    rows[0] != null
+      ? Object.keys(rows[0])
+      : layer.fields?.map((field) => field.name).filter(Boolean) ?? [];
+
+  return {
+    layerId: layer.id,
+    title: title ?? layer.title?.trim() ?? layer.id,
+    columns,
+    rows,
+    totalCount: rows.length,
+    objectIds: getFeatureObjectIds(features, layer),
+  };
+}
+
+function setComparisonSessionResults(
+  session: AssistantExecutionContext["session"],
+  layer: FeatureLayer,
+  layerType: "division" | "district",
+  leftFeature: Graphic,
+  rightFeature: Graphic,
+  leftLabel: string,
+  rightLabel: string
+): void {
+  const comparedFeatures = [leftFeature, rightFeature];
+
+  const comparisonQueryResult = buildQueryResultDataFromFeatures(
+    layer,
+    comparedFeatures,
+    `${layerType === "division" ? "Division" : "District"} Comparison`
+  );
+
+  session.lastQueryResult = comparisonQueryResult;
+
+  session.lastMultiLayerQueryResult = {
+    scopeName: `${leftLabel} vs ${rightLabel}`,
+    scopeLayerId: layer.id,
+    items: [
+      {
+        layerId: comparisonQueryResult.layerId,
+        title: comparisonQueryResult.title,
+        totalCount: comparisonQueryResult.totalCount,
+        objectIds: comparisonQueryResult.objectIds,
+        columns: comparisonQueryResult.columns,
+        rows: comparisonQueryResult.rows,
+      },
+    ],
+    totalLayerCount: 1,
+    totalFeatureCount: comparisonQueryResult.totalCount,
+  };
+}
+
 async function highlightComparison(
   view: MapView,
   layer: FeatureLayer,
@@ -233,6 +327,9 @@ export async function compareRegionsTool(
     }
 
     if (!layerType || !targetLayer || !leftFeature || !rightFeature) {
+      session.lastQueryResult = null;
+      session.lastMultiLayerQueryResult = null;
+
       return {
         message: `Could not find both regions for comparison: ${leftName} and ${rightName}.`,
         data: null,
@@ -258,6 +355,9 @@ export async function compareRegionsTool(
         : getDistrictMetricValue(rightFeature, metric);
 
     if (leftValue === null || rightValue === null) {
+      session.lastQueryResult = null;
+      session.lastMultiLayerQueryResult = null;
+
       return {
         message: `Could not calculate ${getMetricLabel(metric)} for ${leftName} and ${rightName}.`,
         data: null,
@@ -281,6 +381,21 @@ export async function compareRegionsTool(
       (value): value is number => value !== null
     );
 
+    setComparisonSessionResults(
+      session,
+      targetLayer,
+      layerType,
+      leftFeature,
+      rightFeature,
+      leftLabel,
+      rightLabel
+    );
+
+    session.lastSelectedFeature = {
+      layerId: targetLayer.id,
+      objectIds,
+    };
+
     if (view) {
       await view.goTo([leftFeature, rightFeature]);
 
@@ -299,6 +414,8 @@ export async function compareRegionsTool(
         `${rightLabel}: ${formatNumber(rightValue)}`,
         `Higher: ${winner}`,
         `Difference: ${formatNumber(difference)}`,
+        "",
+        `Attribute table is ready for the compared regions.`,
       ].join("\n"),
       data: {
         layerId: targetLayer.id,
@@ -310,10 +427,14 @@ export async function compareRegionsTool(
         rightValue,
         winner,
         difference,
+        objectIds,
       },
     };
   } catch (error) {
     console.error("compareRegionsTool failed:", error);
+
+    session.lastQueryResult = null;
+    session.lastMultiLayerQueryResult = null;
 
     return {
       message: "Failed to compare the requested regions.",

@@ -13,6 +13,8 @@ type GraphicWithSourceLayer = Graphic & {
   sourceLayer?: unknown;
 };
 
+const SCOPE_HIGHLIGHT_GRAPHIC_ID = "__assistant_scope_highlight__";
+
 let activeHighlight: RemovableHandle | null = null;
 
 function resolveFeatureLayer(
@@ -71,11 +73,30 @@ async function waitForFeatureLayerViewReady(
   return layerView;
 }
 
-export function clearActiveHighlight(): void {
+function removeScopeHighlightGraphics(view: MapView | null): void {
+  if (!view) {
+    return;
+  }
+
+  const graphicsToRemove = view.graphics
+    .toArray()
+    .filter(
+      (graphic) =>
+        graphic.attributes?.__assistantGraphicId === SCOPE_HIGHLIGHT_GRAPHIC_ID
+    );
+
+  graphicsToRemove.forEach((graphic) => {
+    view.graphics.remove(graphic);
+  });
+}
+
+export function clearActiveHighlight(view?: MapView | null): void {
   if (activeHighlight) {
     activeHighlight.remove();
     activeHighlight = null;
   }
+
+  removeScopeHighlightGraphics(view ?? null);
 }
 
 export async function highlightGraphic(
@@ -84,14 +105,14 @@ export async function highlightGraphic(
   fallbackLayer?: FeatureLayer | null
 ): Promise<boolean> {
   if (!view || !graphic) {
-    clearActiveHighlight();
+    clearActiveHighlight(view);
     return false;
   }
 
   const layer = resolveFeatureLayer(graphic, fallbackLayer);
 
   if (!(layer instanceof FeatureLayer)) {
-    clearActiveHighlight();
+    clearActiveHighlight(view);
     return false;
   }
 
@@ -101,7 +122,7 @@ export async function highlightGraphic(
 
     const layerView = await waitForFeatureLayerViewReady(view, layer);
 
-    clearActiveHighlight();
+    clearActiveHighlight(view);
 
     const objectId = getGraphicObjectId(graphic, layer);
 
@@ -114,7 +135,7 @@ export async function highlightGraphic(
     return true;
   } catch (error) {
     console.error("Failed to highlight graphic:", error);
-    clearActiveHighlight();
+    clearActiveHighlight(view);
     return false;
   }
 }

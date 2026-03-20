@@ -10,7 +10,6 @@ export type AssistantToolName =
   | "findNearestFeature"
   | "compareRegions"
   | "summarizeVisibleMap"
-  | "getWeatherContext"
   | "rankAdministrativeRegions"
   | "setLayerVisibility"
   | "resetMap"
@@ -65,11 +64,6 @@ export interface SummarizeVisibleMapArgs {
   includeCounts?: boolean;
 }
 
-export interface GetWeatherContextArgs {
-  targetName?: string;
-  useMapCenter?: boolean;
-}
-
 export type AdministrativeRankMetric =
   | "populationDensity"
   | "totalPopulation"
@@ -111,7 +105,6 @@ export type AssistantToolArgs =
   | FindNearestFeatureArgs
   | CompareRegionsArgs
   | SummarizeVisibleMapArgs
-  | GetWeatherContextArgs
   | RankAdministrativeRegionsArgs
   | SetLayerVisibilityArgs
   | ResetMapArgs

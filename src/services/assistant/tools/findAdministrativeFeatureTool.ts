@@ -8,7 +8,8 @@ import type {
 } from "../toolTypes";
 import {
   findAdministrativeFeature,
-  getFeatureObjectId,
+  getFeatureObjectIds,
+  queryAllFeatures,
   setAdministrativeLayerVisibility,
 } from "../../arcgis/query/featureSearch";
 import {
@@ -59,20 +60,43 @@ function toRow(feature: Graphic): AssistantQueryRow {
   return row;
 }
 
-function buildSingleFeatureResult(
+function buildFullLayerResult(
   layer: FeatureLayer,
-  feature: Graphic
+  features: Graphic[]
 ): AssistantQueryResultData {
-  const row = toRow(feature);
-  const objectId = getFeatureObjectId(feature, layer);
+  const rows = features.map(toRow);
+  const columns =
+    rows[0] != null
+      ? Object.keys(rows[0])
+      : layer.fields?.map((field) => field.name).filter(Boolean) ?? [];
 
   return {
     layerId: layer.id,
     title: layer.title || layer.id,
-    columns: Object.keys(row),
-    rows: [row],
+    columns,
+    rows,
+    totalCount: rows.length,
+    objectIds: getFeatureObjectIds(features, layer),
+  };
+}
+
+function buildMatchedFeatureResult(
+  layer: FeatureLayer,
+  feature: Graphic
+): AssistantQueryResultData {
+  const rows = [toRow(feature)];
+  const columns =
+    rows[0] != null
+      ? Object.keys(rows[0])
+      : layer.fields?.map((field) => field.name).filter(Boolean) ?? [];
+
+  return {
+    layerId: layer.id,
+    title: layer.title || layer.id,
+    columns,
+    rows,
     totalCount: 1,
-    objectIds: objectId !== null ? [objectId] : [],
+    objectIds: getFeatureObjectIds([feature], layer),
   };
 }
 
@@ -214,11 +238,34 @@ export async function findAdministrativeFeatureTool(
       setAdministrativeLayerVisibility(map, areaType);
       matched.layer.visible = true;
 
-      const resultData = buildSingleFeatureResult(matched.layer, matched.feature);
-      session.lastQueryResult = resultData;
+      const allLayerFeatures = await queryAllFeatures(matched.layer);
+      const fullLayerResult = buildFullLayerResult(matched.layer, allLayerFeatures);
+      const matchedFeatureResult = buildMatchedFeatureResult(
+        matched.layer,
+        matched.feature
+      );
+
+      session.lastQueryResult = fullLayerResult;
+      session.lastMultiLayerQueryResult = {
+        scopeName: `${toAdminLabel(areaType)} ${targetName}`,
+        scopeLayerId: matched.layer.id,
+        items: [
+          {
+            layerId: fullLayerResult.layerId,
+            title: fullLayerResult.title,
+            totalCount: fullLayerResult.totalCount,
+            objectIds: fullLayerResult.objectIds,
+            columns: fullLayerResult.columns,
+            rows: fullLayerResult.rows,
+          },
+        ],
+        totalLayerCount: 1,
+        totalFeatureCount: fullLayerResult.totalCount,
+      };
+
       session.lastSelectedFeature = {
-        layerId: resultData.layerId,
-        objectIds: resultData.objectIds,
+        layerId: matched.layer.id,
+        objectIds: matchedFeatureResult.objectIds,
       };
 
       if (session.activeHighlightHandle) {
@@ -232,13 +279,13 @@ export async function findAdministrativeFeatureTool(
         duration: 900,
       });
 
-      const objectId = resultData.objectIds[0];
-      if (typeof objectId === "number" && Number.isFinite(objectId)) {
+      const matchedObjectId = matchedFeatureResult.objectIds[0];
+      if (typeof matchedObjectId === "number" && Number.isFinite(matchedObjectId)) {
         const layerView = (await view.whenLayerView(
           matched.layer
         )) as FeatureLayerView;
 
-        session.activeHighlightHandle = layerView.highlight([objectId]);
+        session.activeHighlightHandle = layerView.highlight([matchedObjectId]);
       }
 
       const scopeGraphic = createScopeHighlightGraphic(matched.feature);
@@ -258,10 +305,13 @@ export async function findAdministrativeFeatureTool(
       });
 
       return {
-        message: `Found ${toAdminLabel(areaType)}: ${targetName}.`,
-        data: resultData,
+        message: `Found ${toAdminLabel(areaType)}: ${targetName}. Full attribute table for ${matched.layer.title || matched.layer.id} is ready.`,
+        data: matchedFeatureResult,
       };
     }
+
+    session.lastQueryResult = null;
+    session.lastMultiLayerQueryResult = null;
 
     return {
       message: `No division, district, or upazila matched "${targetName}".`,
@@ -269,6 +319,9 @@ export async function findAdministrativeFeatureTool(
     };
   } catch (error) {
     console.error("findAdministrativeFeatureTool failed:", error);
+
+    session.lastQueryResult = null;
+    session.lastMultiLayerQueryResult = null;
 
     return {
       message: "Failed to search the requested administrative area.",

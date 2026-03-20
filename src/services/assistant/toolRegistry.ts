@@ -8,7 +8,6 @@ import type {
 import { compareRegionsTool } from "./tools/compareRegionsTool";
 import { findAdministrativeFeatureTool } from "./tools/findAdministrativeFeatureTool";
 import { findNearestFeatureTool } from "./tools/findNearestFeatureTool";
-import { getWeatherContextTool } from "./tools/getWeatherContextTool";
 import { highlightFeatureTool } from "./tools/highlightFeatureTool";
 import { openAttributeTableTool } from "./tools/openAttributeTableTool";
 import { queryAdministrativeLayerTool } from "./tools/queryAdministrativeLayerTool";
@@ -34,7 +33,6 @@ export const toolRegistry: Record<AssistantToolName, AssistantToolHandler> = {
   findNearestFeature: findNearestFeatureTool,
   compareRegions: compareRegionsTool,
   summarizeVisibleMap: summarizeVisibleMapTool,
-  getWeatherContext: getWeatherContextTool,
   rankAdministrativeRegions: rankAdministrativeRegionsTool,
   setLayerVisibility: setLayerVisibilityTool,
   resetMap: resetMapTool,

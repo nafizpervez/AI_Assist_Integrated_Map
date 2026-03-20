@@ -127,10 +127,10 @@ function resolveLayerAndObjectIds(
     args.source === "lastQueryResult" ||
     args.source === "largestFromLastQueryResult"
   ) {
-    layerId = session.lastQueryResult?.layerId ?? session.lastSelectedFeature?.layerId;
+    layerId = session.lastSelectedFeature?.layerId ?? session.lastQueryResult?.layerId;
     objectIds =
-      session.lastQueryResult?.objectIds ??
       session.lastSelectedFeature?.objectIds ??
+      session.lastQueryResult?.objectIds ??
       [];
   } else if (typeof args.objectId === "number") {
     objectIds = [args.objectId];

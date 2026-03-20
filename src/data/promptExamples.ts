@@ -33,9 +33,6 @@ export const promptExamples = [
   "find the nearest airport to Gazipur",
   "find the nearest bridge to Rajshahi division",
   "find the nearest port to Barisal division",
-  "find the nearest railway to Dhaka district",
-
-  "show weather in Dhaka",
 
   "summarize what is visible on the map now",
 
@@ -95,7 +92,7 @@ export const promptExamples = [
   "show economic zone in Dhaka division",
   "show highways inside Khulna",
   "show highways in Khulna with tolls and port area",
-  "show railways and airports in Rajshahi division",
+  "show railways and airports in Sylhet division",
   "show rivers and ports in Barisal division",
   "show airports and railways in Dhaka division",
   "show highways and tolls in Khulna division",

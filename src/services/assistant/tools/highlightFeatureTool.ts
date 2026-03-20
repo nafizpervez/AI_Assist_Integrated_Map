@@ -13,6 +13,8 @@ import type Graphic from "@arcgis/core/Graphic";
 import type Layer from "@arcgis/core/layers/Layer";
 import { getFeatureLayerById } from "../../arcgis/query/featureSearch";
 
+const SCOPE_HIGHLIGHT_GRAPHIC_ID = "__assistant_scope_highlight__";
+
 function isFeatureLayer(layer: Layer | null | undefined): layer is FeatureLayer {
   return !!layer && layer.type === "feature";
 }
@@ -130,16 +132,35 @@ function resolveLayerAndObjectIds(
     args.source === "lastQueryResult" ||
     args.source === "largestFromLastQueryResult"
   ) {
-    layerId = session.lastQueryResult?.layerId ?? session.lastSelectedFeature?.layerId;
+    layerId = session.lastSelectedFeature?.layerId ?? session.lastQueryResult?.layerId;
     objectIds =
-      session.lastQueryResult?.objectIds ??
       session.lastSelectedFeature?.objectIds ??
+      session.lastQueryResult?.objectIds ??
       [];
   } else if (typeof args.objectId === "number") {
     objectIds = [args.objectId];
   }
 
   return { layerId, objectIds };
+}
+
+function removeScopeHighlightGraphic(
+  view: AssistantExecutionContext["view"]
+): void {
+  if (!view) {
+    return;
+  }
+
+  const graphicsToRemove = view.graphics
+    .toArray()
+    .filter(
+      (graphic: Graphic) =>
+        graphic.attributes?.__assistantGraphicId === SCOPE_HIGHLIGHT_GRAPHIC_ID
+    );
+
+  graphicsToRemove.forEach((graphic) => {
+    view.graphics.remove(graphic);
+  });
 }
 
 export async function highlightFeatureTool(
@@ -183,6 +204,8 @@ export async function highlightFeatureTool(
       session.activeHighlightHandle = null;
     }
 
+    removeScopeHighlightGraphic(view);
+
     return {
       message: "There are no matched features available to highlight.",
       data: null,
@@ -207,6 +230,8 @@ export async function highlightFeatureTool(
         session.activeHighlightHandle.remove();
         session.activeHighlightHandle = null;
       }
+
+      removeScopeHighlightGraphic(view);
 
       return {
         message: "No features were found for highlight.",
@@ -235,6 +260,8 @@ export async function highlightFeatureTool(
       session.activeHighlightHandle.remove();
       session.activeHighlightHandle = null;
     }
+
+    removeScopeHighlightGraphic(view);
 
     const layerView = (await view.whenLayerView(candidate)) as FeatureLayerView;
     const highlightHandle = layerView.highlight(highlightIds);

@@ -216,27 +216,6 @@ function extractCompareArgs(
   };
 }
 
-function extractWeatherTargetName(prompt: string): string | undefined {
-  const normalized = normalizeText(prompt);
-
-  const patterns = [
-    "show weather in ",
-    "weather in ",
-    "get weather in ",
-    "weather at ",
-    "weather for ",
-    "weather near ",
-  ];
-
-  for (const pattern of patterns) {
-    if (normalized.startsWith(pattern)) {
-      return normalizePlaceName(prompt.trim().slice(pattern.length).trim());
-    }
-  }
-
-  return undefined;
-}
-
 function detectNearestLayerId(prompt: string): string | null {
   const direct = resolveSupportedLayerFromPrompt(
     prompt,
@@ -549,12 +528,6 @@ function buildScopedLayerPlan(
       },
     },
     {
-      tool: "zoomToFeature",
-      args: {
-        source: "lastQueryResult",
-      },
-    },
-    {
       tool: "setLayerVisibility",
       args: {
         layerIds,
@@ -669,22 +642,6 @@ export function buildToolPlanFromPrompt(prompt: string): AssistantToolCall[] {
         },
       ];
     }
-  }
-
-  if (
-    normalized.includes("weather") &&
-    !normalized.startsWith("show weather") &&
-    !normalized.startsWith("hide weather")
-  ) {
-    return [
-      {
-        tool: "getWeatherContext",
-        args: {
-          targetName: extractWeatherTargetName(prompt),
-          useMapCenter: true,
-        },
-      },
-    ];
   }
 
   if (
