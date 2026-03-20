@@ -144,7 +144,7 @@ const riversRenderer = new SimpleRenderer({
 
 const railwaysRenderer = new SimpleRenderer({
   symbol: new SimpleLineSymbol({
-    color: [0, 255, 255, 1],
+    color: [200, 200, 200, 1],
     width: 2.5,
     style: "solid",
   }),

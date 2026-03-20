@@ -69,6 +69,20 @@ function isHighwayLayerId(layerId: string): boolean {
   );
 }
 
+function isAdministrativeLayer(layer: Layer): boolean {
+  const idText = layer.id.toLowerCase();
+  const titleText = (layer.title || "").toLowerCase();
+
+  return (
+    idText.includes("division") ||
+    idText.includes("district") ||
+    idText.includes("upazila") ||
+    titleText.includes("division") ||
+    titleText.includes("district") ||
+    titleText.includes("upazila")
+  );
+}
+
 function getScopedTargetLayers(map: Map, targetLayerId: string): FeatureLayer[] {
   const operationalLayers = getOperationalLayers(map);
 
@@ -100,6 +114,19 @@ function clearAllOperationalDefinitionExpressions(map: Map): void {
       layer.definitionExpression = "";
     }
   });
+}
+
+function restoreAdministrativeLayerPresentation(map: Map): void {
+  getOperationalLayers(map).forEach((layer: Layer) => {
+    if (isFeatureLayer(layer) && isAdministrativeLayer(layer)) {
+      layer.opacity = 1;
+    }
+  });
+}
+
+function hideAdministrativeLayerOnMapKeepLegend(layer: FeatureLayer): void {
+  layer.visible = true;
+  layer.opacity = 0;
 }
 
 function setNearestScopedVisibility(
@@ -494,6 +521,7 @@ export async function findNearestFeatureTool(
     const referenceArea = await getReferenceArea(context, args);
 
     clearAllOperationalDefinitionExpressions(map);
+    restoreAdministrativeLayerPresentation(map);
     removeScopeHighlightGraphic(view);
     clearActiveHighlight(session);
 
@@ -502,6 +530,7 @@ export async function findNearestFeatureTool(
 
       setAdministrativeLayerVisibility(map, referenceArea.areaType);
       referenceArea.layer.visible = true;
+      referenceArea.layer.opacity = 1;
 
       scopedTargetLayers.forEach((targetLayer) => {
         targetLayer.visible = true;
@@ -554,6 +583,7 @@ export async function findNearestFeatureTool(
         });
 
         await zoomToBoundaryScope(view, referenceArea.feature);
+        hideAdministrativeLayerOnMapKeepLegend(referenceArea.layer);
 
         return {
           message: `No highway features were found inside ${referenceArea.sourceLabel}.`,
@@ -598,7 +628,7 @@ export async function findNearestFeatureTool(
 
       await zoomToBoundaryScope(view, referenceArea.feature);
 
-      referenceArea.layer.visible = false;
+      hideAdministrativeLayerOnMapKeepLegend(referenceArea.layer);
 
       if (bestFeature && bestFeatureLayer) {
         const objectIdField =
@@ -662,6 +692,8 @@ export async function findNearestFeatureTool(
         data: null,
       };
     }
+
+    restoreAdministrativeLayerPresentation(map);
 
     layer.visible = true;
     bringLayerToFront(view, layer);
