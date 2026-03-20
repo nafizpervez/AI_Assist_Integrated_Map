@@ -107,10 +107,10 @@ function createScopeHighlightGraphic(feature: Graphic): Graphic | null {
       },
       symbol: {
         type: "simple-fill",
-        color: [255, 0, 0, 0.08],
+        color: [0, 255, 255, 0.1],
         outline: {
-          color: [255, 0, 0, 1],
-          width: 3,
+          color: [0, 255, 255, 1],
+          width: 1,
         },
       },
     });
