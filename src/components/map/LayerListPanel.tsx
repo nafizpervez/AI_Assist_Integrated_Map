@@ -1,5 +1,11 @@
+import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
+import type Layer from "@arcgis/core/layers/Layer";
 import { useLayers } from "../../hooks/useLayers";
 import { useMapView } from "../../hooks/useMapView";
+
+function isFeatureLayer(layer: Layer | null | undefined): layer is FeatureLayer {
+    return !!layer && layer.type === "feature";
+}
 
 export default function LayerListPanel() {
     const { map } = useMapView();
@@ -14,7 +20,13 @@ export default function LayerListPanel() {
 
         if (!layer) return;
 
-        layer.visible = !layer.visible;
+        const nextVisible = !layer.visible;
+
+        if (nextVisible && isFeatureLayer(layer)) {
+            layer.definitionExpression = "";
+        }
+
+        layer.visible = nextVisible;
     };
 
     return (

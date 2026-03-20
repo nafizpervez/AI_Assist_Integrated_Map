@@ -1,4 +1,7 @@
 import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
+import type Renderer from "@arcgis/core/renderers/Renderer";
+import SimpleLineSymbol from "@arcgis/core/symbols/SimpleLineSymbol";
+import SimpleRenderer from "@arcgis/core/renderers/SimpleRenderer";
 import { layerConfig } from "../../config/layers";
 
 type PopupFieldDefinition = {
@@ -91,6 +94,7 @@ function buildFeatureLayer(options: {
   visible: boolean;
   opacity?: number;
   popupEnabled?: boolean;
+  renderer?: Renderer;
 }): FeatureLayer {
   const popupEnabled = options.popupEnabled ?? true;
 
@@ -99,7 +103,8 @@ function buildFeatureLayer(options: {
     id: options.id,
     title: options.title,
     visible: options.visible,
-    opacity: options.opacity,
+    ...(options.opacity !== undefined ? { opacity: options.opacity } : {}),
+    ...(options.renderer ? { renderer: options.renderer } : {}),
     outFields: ["*"],
     popupEnabled,
     popupTemplate: popupEnabled
@@ -128,6 +133,38 @@ function buildFeatureLayer(options: {
       : undefined,
   });
 }
+
+const riversRenderer = new SimpleRenderer({
+  symbol: new SimpleLineSymbol({
+    color: [0, 190, 255, 1],
+    width: 1.8,
+    style: "solid",
+  }),
+});
+
+const railwaysRenderer = new SimpleRenderer({
+  symbol: new SimpleLineSymbol({
+    color: [0, 255, 255, 1],
+    width: 2.5,
+    style: "solid",
+  }),
+});
+
+const regionalHighwaysRenderer = new SimpleRenderer({
+  symbol: new SimpleLineSymbol({
+    color: [255, 166, 0, 1],
+    width: 2.4,
+    style: "solid",
+  }),
+});
+
+const nationalHighwaysRenderer = new SimpleRenderer({
+  symbol: new SimpleLineSymbol({
+    color: [255, 80, 80, 1],
+    width: 3.2,
+    style: "solid",
+  }),
+});
 
 export function createOperationalLayers(): FeatureLayer[] {
   return [
@@ -168,24 +205,28 @@ export function createOperationalLayers(): FeatureLayer[] {
       id: layerConfig.railways.id,
       title: layerConfig.railways.title,
       visible: false,
+      renderer: railwaysRenderer,
     }),
     buildFeatureLayer({
       url: layerConfig.regionalHighways.url,
       id: layerConfig.regionalHighways.id,
       title: layerConfig.regionalHighways.title,
       visible: false,
+      renderer: regionalHighwaysRenderer,
     }),
     buildFeatureLayer({
       url: layerConfig.nationalHighways.url,
       id: layerConfig.nationalHighways.id,
       title: layerConfig.nationalHighways.title,
       visible: false,
+      renderer: nationalHighwaysRenderer,
     }),
     buildFeatureLayer({
       url: layerConfig.rivers.url,
       id: layerConfig.rivers.id,
       title: layerConfig.rivers.title,
       visible: false,
+      renderer: riversRenderer,
     }),
     buildFeatureLayer({
       url: layerConfig.landPort.url,

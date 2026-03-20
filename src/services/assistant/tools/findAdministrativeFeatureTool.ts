@@ -82,10 +82,25 @@ function toAdminLabel(areaType: AdminLevel): string {
   return "Upazila";
 }
 
+function toDisplayName(value: string): string {
+  return value
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1).toLowerCase())
+    .join(" ");
+}
+
+function buildScopePopupTitle(targetName: string, areaType: AdminLevel): string {
+  return `Scope: ${toDisplayName(targetName)} ${toAdminLabel(areaType)}`;
+}
+
 function removeScopeHighlightGraphic(view: MapView): void {
   const graphicsToRemove = view.graphics
     .toArray()
-    .filter((graphic) => graphic.attributes?.__assistantGraphicId === SCOPE_HIGHLIGHT_GRAPHIC_ID);
+    .filter(
+      (graphic) =>
+        graphic.attributes?.__assistantGraphicId === SCOPE_HIGHLIGHT_GRAPHIC_ID
+    );
 
   graphicsToRemove.forEach((graphic) => {
     view.graphics.remove(graphic);
@@ -131,6 +146,32 @@ function createScopeHighlightGraphic(feature: Graphic): Graphic | null {
   }
 
   return null;
+}
+
+function buildPopupFeature(
+  feature: Graphic,
+  layer: FeatureLayer,
+  targetName: string,
+  areaType: AdminLevel
+): Graphic {
+  const popupTitle = buildScopePopupTitle(targetName, areaType);
+
+  return new Graphic({
+    geometry: feature.geometry,
+    attributes: feature.attributes,
+    popupTemplate: {
+      title: popupTitle,
+      content: [
+        {
+          type: "fields",
+          fieldInfos: layer.fields.map((field) => ({
+            fieldName: field.name,
+            label: field.alias || field.name,
+          })),
+        },
+      ],
+    },
+  });
 }
 
 export async function findAdministrativeFeatureTool(
@@ -205,8 +246,15 @@ export async function findAdministrativeFeatureTool(
         view.graphics.add(scopeGraphic);
       }
 
+      const popupFeature = buildPopupFeature(
+        matched.feature,
+        matched.layer,
+        targetName,
+        areaType
+      );
+
       await view.openPopup({
-        features: [matched.feature],
+        features: [popupFeature],
       });
 
       return {

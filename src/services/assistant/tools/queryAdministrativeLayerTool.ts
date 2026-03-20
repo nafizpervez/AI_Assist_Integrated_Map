@@ -265,6 +265,15 @@ async function resolveBoundaryFeatures(
   return [];
 }
 
+function bringLayerToFront(map: Map, layer: FeatureLayer): void {
+  const currentIndex = map.layers.indexOf(layer);
+  const topIndex = map.layers.length - 1;
+
+  if (currentIndex >= 0 && currentIndex !== topIndex) {
+    map.reorder(layer, topIndex);
+  }
+}
+
 export async function queryAdministrativeLayerTool(
   rawArgs: AssistantToolArgs,
   context: AssistantExecutionContext,
@@ -292,6 +301,7 @@ export async function queryAdministrativeLayerTool(
   try {
     await layer.load();
     layer.visible = true;
+    bringLayerToFront(map, layer);
 
     let candidateFeatures: Graphic[] = [];
 
@@ -299,6 +309,8 @@ export async function queryAdministrativeLayerTool(
       const boundaryFeatures = await resolveBoundaryFeatures(map, args);
 
       if (!boundaryFeatures || !boundaryFeatures.length) {
+        layer.visible = false;
+        layer.definitionExpression = "";
         return {
           message: `No administrative area matched "${args.withinName}".`,
           data: null,
@@ -308,6 +320,8 @@ export async function queryAdministrativeLayerTool(
       const boundaryGeometry = boundaryFeatures[0].geometry;
 
       if (!boundaryGeometry) {
+        layer.visible = false;
+        layer.definitionExpression = "";
         return {
           message: `The boundary for "${args.withinName}" has no geometry.`,
           data: null,
@@ -333,7 +347,14 @@ export async function queryAdministrativeLayerTool(
       .filter((value): value is number => value !== null);
 
     if (args.withinName) {
-      setLayerFilterByObjectIds(layer, filteredObjectIds);
+      if (filteredObjectIds.length > 0) {
+        setLayerFilterByObjectIds(layer, filteredObjectIds);
+        layer.visible = true;
+        bringLayerToFront(map, layer);
+      } else {
+        layer.definitionExpression = "";
+        layer.visible = false;
+      }
     }
 
     const filteredRows = toRows(filteredFeatures);
