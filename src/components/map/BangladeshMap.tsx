@@ -20,6 +20,10 @@ type GraphicWithSourceLayer = Graphic & {
     sourceLayer?: unknown;
 };
 
+type BangladeshMapProps = {
+    layoutSignature?: string;
+};
+
 function hasGraphic(result: unknown): result is { graphic: Graphic } {
     return typeof result === "object" && result !== null && "graphic" in result;
 }
@@ -42,8 +46,11 @@ function getPopupLocation(graphic: Graphic) {
     return null;
 }
 
-export default function BangladeshMap() {
+export default function BangladeshMap({
+    layoutSignature = "default",
+}: BangladeshMapProps) {
     const mapRef = useRef<HTMLDivElement | null>(null);
+    const viewRef = useRef<MapView | null>(null);
     const { setMapBundle } = useMapView();
 
     useEffect(() => {
@@ -62,6 +69,7 @@ export default function BangladeshMap() {
             }
 
             viewInstance = view;
+            viewRef.current = view;
             setMapBundle({ map, view });
 
             view.when(
@@ -86,7 +94,7 @@ export default function BangladeshMap() {
                                     : null;
 
                             if (!clickedGraphic) {
-                                clearActiveHighlight();
+                                clearActiveHighlight(view);
 
                                 if (view.popup) {
                                     view.popup.close();
@@ -148,15 +156,51 @@ export default function BangladeshMap() {
             destroyed = true;
 
             clickHandle?.remove();
-            clearActiveHighlight();
+            clearActiveHighlight(viewInstance);
 
             setMapBundle({ map: null, view: null });
+            viewRef.current = null;
 
             if (viewInstance) {
                 viewInstance.destroy();
             }
         };
     }, [setMapBundle]);
+
+    useEffect(() => {
+        const view = viewRef.current;
+        const container = mapRef.current;
+
+        if (!view || !container) {
+            return;
+        }
+
+        const triggerLayoutRefresh = () => {
+            window.dispatchEvent(new Event("resize"));
+        };
+
+        triggerLayoutRefresh();
+
+        const frameId = window.requestAnimationFrame(() => {
+            triggerLayoutRefresh();
+        });
+
+        const timeoutId = window.setTimeout(() => {
+            triggerLayoutRefresh();
+        }, 260);
+
+        const resizeObserver = new ResizeObserver(() => {
+            triggerLayoutRefresh();
+        });
+
+        resizeObserver.observe(container);
+
+        return () => {
+            window.cancelAnimationFrame(frameId);
+            window.clearTimeout(timeoutId);
+            resizeObserver.disconnect();
+        };
+    }, [layoutSignature]);
 
     return (
         <div

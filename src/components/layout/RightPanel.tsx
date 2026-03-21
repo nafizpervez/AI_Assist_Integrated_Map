@@ -1,4 +1,5 @@
 import AssistantPanel from "../assistant/AssistantPanel";
+import { useState } from "react";
 
 type RightPanelMode = "collapsed" | "normal" | "expanded";
 
@@ -24,45 +25,72 @@ function getPanelTitle(mode: RightPanelMode) {
 function AssistantIcon() {
     return (
         <svg
-            width="20"
-            height="20"
+            width="26"
+            height="26"
             viewBox="0 0 24 24"
             fill="none"
             aria-hidden="true"
         >
+            <defs>
+                <linearGradient
+                    id="assistantIconHeadGradient"
+                    x1="5"
+                    y1="6"
+                    x2="19"
+                    y2="19"
+                    gradientUnits="userSpaceOnUse"
+                >
+                    <stop offset="0%" stopColor="#020617" />
+                    <stop offset="52%" stopColor="#1d4ed8" />
+                    <stop offset="100%" stopColor="#06b6d4" />
+                </linearGradient>
+
+                <linearGradient
+                    id="assistantIconLegGradient"
+                    x1="8.5"
+                    y1="17"
+                    x2="15.5"
+                    y2="20"
+                    gradientUnits="userSpaceOnUse"
+                >
+                    <stop offset="0%" stopColor="#1d4ed8" />
+                    <stop offset="100%" stopColor="#06b6d4" />
+                </linearGradient>
+            </defs>
+
             <rect
                 x="5"
                 y="6"
                 width="14"
                 height="11"
                 rx="4"
-                stroke="currentColor"
-                strokeWidth="1.8"
+                stroke="url(#assistantIconHeadGradient)"
+                strokeWidth="2"
             />
             <path
                 d="M12 3.5V6"
-                stroke="currentColor"
-                strokeWidth="1.8"
+                stroke="#020617"
+                strokeWidth="2"
                 strokeLinecap="round"
             />
-            <circle cx="9.5" cy="11.5" r="1" fill="currentColor" />
-            <circle cx="14.5" cy="11.5" r="1" fill="currentColor" />
+            <circle cx="9.5" cy="11.5" r="1.15" fill="#020617" />
+            <circle cx="14.5" cy="11.5" r="1.15" fill="#1d4ed8" />
             <path
                 d="M9.5 14.5C10.2 15.1 11 15.4 12 15.4C13 15.4 13.8 15.1 14.5 14.5"
-                stroke="currentColor"
-                strokeWidth="1.6"
+                stroke="#06b6d4"
+                strokeWidth="1.8"
                 strokeLinecap="round"
             />
             <path
                 d="M10 17.2L8.6 19.4"
-                stroke="currentColor"
-                strokeWidth="1.8"
+                stroke="url(#assistantIconLegGradient)"
+                strokeWidth="2"
                 strokeLinecap="round"
             />
             <path
                 d="M14 17.2L15.4 19.4"
-                stroke="currentColor"
-                strokeWidth="1.8"
+                stroke="url(#assistantIconLegGradient)"
+                strokeWidth="2"
                 strokeLinecap="round"
             />
         </svg>
@@ -77,6 +105,10 @@ export default function RightPanel({
 }: RightPanelProps) {
     const isCollapsed = mode === "collapsed";
     const isExpanded = mode === "expanded";
+    const [assistantHover, setAssistantHover] = useState(false);
+    const [hideHover, setHideHover] = useState(false);
+    const [normalHover, setNormalHover] = useState(false);
+    const [expandHover, setExpandHover] = useState(false);
 
     return (
         <aside
@@ -109,18 +141,28 @@ export default function RightPanel({
                         type="button"
                         aria-label="Open AI Assistant panel"
                         title="Open AI Assistant"
+                        onMouseEnter={() => setAssistantHover(true)}
+                        onMouseLeave={() => setAssistantHover(false)}
                         style={{
                             width: "40px",
                             height: "40px",
-                            border: "1px solid #cbd5e1",
-                            background: "#ffffff",
-                            color: "#0f172a",
+                            border: assistantHover
+                                ? "1px solid rgba(29,78,216,0.35)"
+                                : "1px solid #cbd5e1",
+                            background: assistantHover
+                                ? "linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(239,246,255,0.98) 100%)"
+                                : "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%)",
                             borderRadius: "12px",
                             cursor: "pointer",
                             display: "inline-flex",
                             alignItems: "center",
                             justifyContent: "center",
-                            boxShadow: "0 6px 18px rgba(15, 23, 42, 0.08)",
+                            boxShadow: assistantHover
+                                ? "0 14px 28px rgba(37, 99, 235, 0.16), 0 0 0 3px rgba(6,182,212,0.08)"
+                                : "0 6px 18px rgba(15, 23, 42, 0.08)",
+                            transform: assistantHover ? "translateY(-1px)" : "translateY(0)",
+                            transition:
+                                "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease",
                         }}
                     >
                         <AssistantIcon />
@@ -131,10 +173,11 @@ export default function RightPanel({
                             writingMode: "vertical-rl",
                             transform: "rotate(180deg)",
                             fontSize: "11px",
-                            fontWeight: 800,
-                            letterSpacing: "0.08em",
-                            color: "#475569",
+                            fontWeight: 900,
+                            letterSpacing: "0.12em",
+                            color: assistantHover ? "#1d4ed8" : "#475569",
                             userSelect: "none",
+                            transition: "color 180ms ease",
                         }}
                     >
                         AI ASSISTANT
@@ -176,16 +219,27 @@ export default function RightPanel({
                                 onClick={onCollapse}
                                 type="button"
                                 aria-label="Collapse AI Assistant panel"
+                                onMouseEnter={() => setHideHover(true)}
+                                onMouseLeave={() => setHideHover(false)}
                                 style={{
-                                    border: "1px solid #cbd5e1",
-                                    background: "#ffffff",
-                                    color: "#0f172a",
+                                    border: hideHover
+                                        ? "1px solid rgba(29,78,216,0.35)"
+                                        : "1px solid #cbd5e1",
+                                    background: hideHover
+                                        ? "linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(239,246,255,0.98) 100%)"
+                                        : "#ffffff",
+                                    color: hideHover ? "#1d4ed8" : "#0f172a",
                                     borderRadius: "10px",
                                     padding: "8px 12px",
                                     fontSize: "12px",
                                     fontWeight: 700,
                                     cursor: "pointer",
-                                    boxShadow: "0 6px 18px rgba(15, 23, 42, 0.06)",
+                                    boxShadow: hideHover
+                                        ? "0 10px 22px rgba(37, 99, 235, 0.12)"
+                                        : "0 6px 18px rgba(15, 23, 42, 0.06)",
+                                    transform: hideHover ? "translateY(-1px)" : "translateY(0)",
+                                    transition:
+                                        "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease, color 180ms ease",
                                 }}
                             >
                                 Hide
@@ -196,17 +250,42 @@ export default function RightPanel({
                                 type="button"
                                 aria-label="Set AI Assistant panel to normal width"
                                 disabled={mode === "normal"}
+                                onMouseEnter={() => setNormalHover(true)}
+                                onMouseLeave={() => setNormalHover(false)}
                                 style={{
-                                    border: "1px solid #cbd5e1",
-                                    background: mode === "normal" ? "#0f172a" : "#ffffff",
-                                    color: mode === "normal" ? "#ffffff" : "#0f172a",
+                                    border:
+                                        mode === "normal"
+                                            ? "1px solid transparent"
+                                            : normalHover
+                                                ? "1px solid rgba(29,78,216,0.35)"
+                                                : "1px solid #cbd5e1",
+                                    background:
+                                        mode === "normal"
+                                            ? "linear-gradient(135deg, #020617 0%, #1d4ed8 55%, #06b6d4 100%)"
+                                            : normalHover
+                                                ? "linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(239,246,255,0.98) 100%)"
+                                                : "#ffffff",
+                                    color: mode === "normal" ? "#ffffff" : normalHover ? "#1d4ed8" : "#0f172a",
                                     borderRadius: "10px",
                                     padding: "8px 12px",
                                     fontSize: "12px",
                                     fontWeight: 700,
                                     cursor: mode === "normal" ? "default" : "pointer",
-                                    opacity: mode === "normal" ? 1 : 0.95,
-                                    boxShadow: "0 6px 18px rgba(15, 23, 42, 0.06)",
+                                    opacity: 1,
+                                    boxShadow:
+                                        mode === "normal"
+                                            ? "0 10px 22px rgba(37, 99, 235, 0.18)"
+                                            : normalHover
+                                                ? "0 10px 22px rgba(37, 99, 235, 0.12)"
+                                                : "0 6px 18px rgba(15, 23, 42, 0.06)",
+                                    transform:
+                                        mode === "normal"
+                                            ? "translateY(0)"
+                                            : normalHover
+                                                ? "translateY(-1px)"
+                                                : "translateY(0)",
+                                    transition:
+                                        "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease, color 180ms ease",
                                 }}
                             >
                                 Normal
@@ -217,17 +296,42 @@ export default function RightPanel({
                                 type="button"
                                 aria-label="Expand AI Assistant panel"
                                 disabled={isExpanded}
+                                onMouseEnter={() => setExpandHover(true)}
+                                onMouseLeave={() => setExpandHover(false)}
                                 style={{
-                                    border: "1px solid #cbd5e1",
-                                    background: isExpanded ? "#0f172a" : "#ffffff",
-                                    color: isExpanded ? "#ffffff" : "#0f172a",
+                                    border:
+                                        isExpanded
+                                            ? "1px solid transparent"
+                                            : expandHover
+                                                ? "1px solid rgba(29,78,216,0.35)"
+                                                : "1px solid #cbd5e1",
+                                    background:
+                                        isExpanded
+                                            ? "linear-gradient(135deg, #020617 0%, #1d4ed8 55%, #06b6d4 100%)"
+                                            : expandHover
+                                                ? "linear-gradient(180deg, rgba(255,255,255,1) 0%, rgba(239,246,255,0.98) 100%)"
+                                                : "#ffffff",
+                                    color: isExpanded ? "#ffffff" : expandHover ? "#1d4ed8" : "#0f172a",
                                     borderRadius: "10px",
                                     padding: "8px 12px",
                                     fontSize: "12px",
                                     fontWeight: 700,
                                     cursor: isExpanded ? "default" : "pointer",
-                                    opacity: isExpanded ? 1 : 0.95,
-                                    boxShadow: "0 6px 18px rgba(15, 23, 42, 0.06)",
+                                    opacity: 1,
+                                    boxShadow:
+                                        isExpanded
+                                            ? "0 10px 22px rgba(37, 99, 235, 0.18)"
+                                            : expandHover
+                                                ? "0 10px 22px rgba(37, 99, 235, 0.12)"
+                                                : "0 6px 18px rgba(15, 23, 42, 0.06)",
+                                    transform:
+                                        isExpanded
+                                            ? "translateY(0)"
+                                            : expandHover
+                                                ? "translateY(-1px)"
+                                                : "translateY(0)",
+                                    transition:
+                                        "transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease, background 180ms ease, color 180ms ease",
                                 }}
                             >
                                 Expand

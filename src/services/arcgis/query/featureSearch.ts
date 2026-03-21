@@ -16,8 +16,12 @@ import FeatureLayer from "@arcgis/core/layers/FeatureLayer";
 import type FeatureLayerView from "@arcgis/core/views/layers/FeatureLayerView";
 import type Geometry from "@arcgis/core/geometry/Geometry";
 import type Graphic from "@arcgis/core/Graphic";
+import type Layer from "@arcgis/core/layers/Layer";
 import type Map from "@arcgis/core/Map";
 import type MapView from "@arcgis/core/views/MapView";
+import { similarityScore } from "../../../utils/fuzzy";
+
+const MIN_FUZZY_SCORE = 0.74;
 
 export function attachFeatureContext(
   feature: Graphic,
@@ -172,6 +176,75 @@ export async function queryAllFeatures(layer: FeatureLayer): Promise<Graphic[]> 
   return featureSet.features.map((feature) => attachFeatureContext(feature, layer));
 }
 
+function getNormalizedFeatureFieldValue(
+  feature: Graphic,
+  fieldName: string
+): string {
+  const rawValue = getAttributeValueCaseInsensitive(feature, [fieldName]);
+  return normalizePlaceName(String(rawValue ?? ""));
+}
+
+function getNormalizedFeatureFieldValues(
+  feature: Graphic,
+  fieldNames: string[]
+): string[] {
+  const values = fieldNames
+    .map((fieldName) => getNormalizedFeatureFieldValue(feature, fieldName))
+    .filter(Boolean);
+
+  return Array.from(new Set(values));
+}
+
+function scoreCandidateAgainstTarget(candidate: string, target: string): number {
+  if (!candidate || !target) {
+    return 0;
+  }
+
+  if (candidate === target) {
+    return 1;
+  }
+
+  if (candidate.includes(target) || target.includes(candidate)) {
+    return 0.92;
+  }
+
+  return similarityScore(candidate, target);
+}
+
+function findBestFeatureByCandidateStrings(
+  features: Graphic[],
+  candidateResolver: (feature: Graphic) => string[],
+  targetName: string
+): Graphic | null {
+  const normalizedTarget = normalizePlaceName(targetName);
+
+  if (!normalizedTarget) {
+    return null;
+  }
+
+  let bestFeature: Graphic | null = null;
+  let bestScore = 0;
+
+  for (const feature of features) {
+    const candidates = candidateResolver(feature);
+
+    for (const candidate of candidates) {
+      const score = scoreCandidateAgainstTarget(candidate, normalizedTarget);
+
+      if (score > bestScore) {
+        bestScore = score;
+        bestFeature = feature;
+      }
+
+      if (score >= 1) {
+        return feature;
+      }
+    }
+  }
+
+  return bestScore >= MIN_FUZZY_SCORE ? bestFeature : null;
+}
+
 export async function searchFeatureByField(
   layer: FeatureLayer,
   fieldName: string,
@@ -185,16 +258,37 @@ export async function searchFeatureByField(
   query.returnGeometry = true;
 
   const featureSet = await layer.queryFeatures(query);
+  const features = featureSet.features.map((feature) => attachFeatureContext(feature, layer));
   const normalizedTarget = normalizePlaceName(targetName);
 
-  const matchedFeature =
-    featureSet.features.find((feature) => {
-      const rawValue = feature.attributes?.[fieldName];
-      const candidate = normalizePlaceName(String(rawValue ?? ""));
+  const exactMatch =
+    features.find((feature) => {
+      const candidate = getNormalizedFeatureFieldValue(feature, fieldName);
       return candidate === normalizedTarget;
     }) ?? null;
 
-  return matchedFeature ? attachFeatureContext(matchedFeature, layer) : null;
+  if (exactMatch) {
+    return exactMatch;
+  }
+
+  const containsMatch =
+    features.find((feature) => {
+      const candidate = getNormalizedFeatureFieldValue(feature, fieldName);
+      return (
+        candidate.includes(normalizedTarget) ||
+        normalizedTarget.includes(candidate)
+      );
+    }) ?? null;
+
+  if (containsMatch) {
+    return containsMatch;
+  }
+
+  return findBestFeatureByCandidateStrings(
+    features,
+    (feature) => [getNormalizedFeatureFieldValue(feature, fieldName)],
+    targetName
+  );
 }
 
 export async function searchFeatureByFields(
@@ -202,19 +296,40 @@ export async function searchFeatureByFields(
   fieldNames: string[],
   targetName: string
 ): Promise<Graphic | null> {
-  for (const fieldName of fieldNames) {
-    const matchedFeature = await searchFeatureByField(
-      layer,
-      fieldName,
-      targetName
-    );
+  await layer.load();
 
-    if (matchedFeature) {
-      return matchedFeature;
-    }
+  const features = await queryAllFeatures(layer);
+  const normalizedTarget = normalizePlaceName(targetName);
+
+  const exactMatch =
+    features.find((feature) => {
+      const candidates = getNormalizedFeatureFieldValues(feature, fieldNames);
+      return candidates.some((candidate) => candidate === normalizedTarget);
+    }) ?? null;
+
+  if (exactMatch) {
+    return exactMatch;
   }
 
-  return null;
+  const containsMatch =
+    features.find((feature) => {
+      const candidates = getNormalizedFeatureFieldValues(feature, fieldNames);
+      return candidates.some(
+        (candidate) =>
+          candidate.includes(normalizedTarget) ||
+          normalizedTarget.includes(candidate)
+      );
+    }) ?? null;
+
+  if (containsMatch) {
+    return containsMatch;
+  }
+
+  return findBestFeatureByCandidateStrings(
+    features,
+    (feature) => getNormalizedFeatureFieldValues(feature, fieldNames),
+    targetName
+  );
 }
 
 export function getPreferredDistrictReferenceTokens(feature: Graphic): string[] {
@@ -257,7 +372,29 @@ export async function searchDistrictFeatureByNameOrVarname(
       return tokens.includes(normalizedTarget);
     }) ?? null;
 
-  return aliasMatch;
+  if (aliasMatch) {
+    return aliasMatch;
+  }
+
+  const containsMatch =
+    features.find((feature) => {
+      const tokens = getPreferredDistrictReferenceTokens(feature);
+      return tokens.some(
+        (token) =>
+          token.includes(normalizedTarget) ||
+          normalizedTarget.includes(token)
+      );
+    }) ?? null;
+
+  if (containsMatch) {
+    return containsMatch;
+  }
+
+  return findBestFeatureByCandidateStrings(
+    features,
+    (feature) => getPreferredDistrictReferenceTokens(feature),
+    targetName
+  );
 }
 
 export function getFeatureDisplayLabel(feature: Graphic): string {
@@ -348,12 +485,23 @@ export async function searchExtremeFeatureByNumericField(
   return attachFeatureContext(selectedFeature, layer);
 }
 
+function isFeatureLayer(layer: Layer | null | undefined): layer is FeatureLayer {
+  return !!layer && layer.type === "feature";
+}
+
 export function getFeatureLayerById(
   map: Map,
   layerId: string
 ): FeatureLayer | null {
-  const layer = map.layers.find((item) => item.id === layerId);
-  return layer instanceof FeatureLayer ? layer : null;
+  const topLevelMatch = map.layers.find((item) => item.id === layerId);
+  if (topLevelMatch instanceof FeatureLayer) {
+    return topLevelMatch;
+  }
+
+  const allLayers = map.allLayers?.toArray?.() ?? [];
+  const deepMatch = allLayers.find((item) => item.id === layerId);
+
+  return deepMatch instanceof FeatureLayer ? deepMatch : null;
 }
 
 export function getDistrictLayer(map: Map): FeatureLayer | null {
@@ -368,6 +516,33 @@ export function getUpazilaLayer(map: Map): FeatureLayer | null {
   return getFeatureLayerById(map, "upazila");
 }
 
+export function ensureLayerVisible(layer: FeatureLayer): void {
+  if (!layer.visible) {
+    layer.visible = true;
+  }
+}
+
+export function setAdministrativeLayerVisibility(
+  map: Map,
+  activeLayerId: "division" | "district" | "upazila"
+): void {
+  const adminLayerIds: Array<"division" | "district" | "upazila"> = [
+    "division",
+    "district",
+    "upazila",
+  ];
+
+  for (const layerId of adminLayerIds) {
+    const layer = getFeatureLayerById(map, layerId);
+
+    if (!layer || !isFeatureLayer(layer)) {
+      continue;
+    }
+
+    layer.visible = layerId === activeLayerId;
+  }
+}
+
 export async function findAdministrativeFeature(
   map: Map,
   areaType: AdminLevel,
@@ -380,7 +555,12 @@ export async function findAdministrativeFeature(
       return null;
     }
 
-    const feature = await searchFeatureByField(layer, "name_1", areaName);
+    const feature = await searchFeatureByFields(
+      layer,
+      ["name_1", "division", "division_name", "name", "name_en"],
+      areaName
+    );
+
     return feature ? { feature, layer } : null;
   }
 
@@ -391,7 +571,22 @@ export async function findAdministrativeFeature(
       return null;
     }
 
-    const feature = await searchFeatureByField(layer, "name_2", areaName);
+    const feature =
+      (await searchDistrictFeatureByNameOrVarname(layer, areaName)) ??
+      (await searchFeatureByFields(
+        layer,
+        [
+          "name_2",
+          "district",
+          "district_name",
+          "name",
+          "name_en",
+          "adm2_en",
+          "adm2_name",
+        ],
+        areaName
+      ));
+
     return feature ? { feature, layer } : null;
   }
 
@@ -403,7 +598,16 @@ export async function findAdministrativeFeature(
 
   const feature = await searchFeatureByFields(
     layer,
-    ["name_3", "upazila_name", "upazila", "name", "name_en"],
+    [
+      "name_3",
+      "upazila_name",
+      "upazila",
+      "name",
+      "name_en",
+      "adm3_en",
+      "adm3_name",
+      "thana",
+    ],
     areaName
   );
 

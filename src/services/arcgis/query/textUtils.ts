@@ -6,18 +6,61 @@ import type {
 } from "./types";
 
 import { bdPlaceAliases } from "../../../data/bdPlaceAliases";
+import { findBestFuzzyMatch } from "../../../utils/fuzzy";
+
+const ADMIN_LEVEL_ALIASES: Record<AdminLevel, string[]> = {
+  division: ["division", "div", "divison", "devision", "divisions"],
+  district: ["district", "dist", "distrct", "distict", "districts"],
+  upazila: ["upazila", "upzilla", "upazilla", "upzila", "upazilas", "thana"],
+};
+
+const COMMON_FILLER_TOKENS = new Set([
+  "please",
+  "pls",
+  "plz",
+  "can",
+  "could",
+  "you",
+  "me",
+  "just",
+  "maybe",
+  "kindly",
+  "the",
+  "a",
+  "an",
+]);
 
 export function normalizeText(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[’']/g, "")
+    .replace(/[.,;:!?()[\]{}]/g, " ")
+    .replace(/[-_/]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function normalizeAliasLookupKey(value: string): string {
-  return normalizeText(value).replace(/[.'’]/g, "");
+  return normalizeText(value);
+}
+
+function replaceAliasTokens(text: string): string {
+  const tokens = text.split(" ").filter(Boolean);
+  const replaced = tokens.map((token) => bdPlaceAliases[token] ?? token);
+  return replaced.join(" ");
 }
 
 export function normalizePlaceName(value: string): string {
   const lookupKey = normalizeAliasLookupKey(value);
-  return bdPlaceAliases[lookupKey] ?? lookupKey;
+  const direct = bdPlaceAliases[lookupKey];
+
+  if (direct) {
+    return direct;
+  }
+
+  const tokenReplaced = replaceAliasTokens(lookupKey);
+  return bdPlaceAliases[tokenReplaced] ?? tokenReplaced;
 }
 
 export function normalizeMatchValue(value: string): string {
@@ -36,16 +79,22 @@ export function splitPipeAliasTokens(value: string | null | undefined): string[]
 }
 
 export function containsAny(text: string, candidates: string[]): boolean {
-  return candidates.some((candidate) => text.includes(candidate));
+  return candidates.some((candidate) => text.includes(normalizeText(candidate)));
 }
 
 export function hasPopulationIntent(text: string): boolean {
-  return containsAny(text, [
+  return containsAny(normalizeText(text), [
     "population",
     "people",
     "populated",
     "inhabitants",
     "residents",
+    "female",
+    "male",
+    "urban",
+    "rural",
+    "density",
+    "dense",
   ]);
 }
 
@@ -62,6 +111,8 @@ export function getPopulationExtreme(
       "max",
       "largest",
       "top",
+      "biggest",
+      "densest",
     ])
   ) {
     return "highest";
@@ -87,7 +138,7 @@ export function isDistrictPopulationExtremePrompt(prompt: string): boolean {
   const normalized = normalizeText(prompt);
 
   return (
-    normalized.includes("district") &&
+    containsAny(normalized, ADMIN_LEVEL_ALIASES.district) &&
     hasPopulationIntent(normalized) &&
     getPopulationExtreme(normalized) !== null
   );
@@ -97,7 +148,7 @@ export function isDivisionPopulationExtremePrompt(prompt: string): boolean {
   const normalized = normalizeText(prompt);
 
   return (
-    normalized.includes("division") &&
+    containsAny(normalized, ADMIN_LEVEL_ALIASES.division) &&
     hasPopulationIntent(normalized) &&
     getPopulationExtreme(normalized) !== null
   );
@@ -110,7 +161,10 @@ export function isLocationStylePrompt(prompt: string): boolean {
     normalized.startsWith("where is ") ||
     normalized.startsWith("where ") ||
     normalized.startsWith("show me ") ||
-    normalized.startsWith("show ")
+    normalized.startsWith("show ") ||
+    normalized.startsWith("display ") ||
+    normalized.startsWith("locate ") ||
+    normalized.startsWith("zoom ")
   );
 }
 
@@ -158,7 +212,8 @@ export function extractSpatialRelation(prompt: string): SpatialRelation | null {
   if (
     normalized.includes(" near ") ||
     normalized.startsWith("near ") ||
-    normalized.includes(" nearby ")
+    normalized.includes(" nearby ") ||
+    normalized.includes(" nearest ")
   ) {
     return "near";
   }
@@ -184,136 +239,148 @@ export function extractSpatialRelation(prompt: string): SpatialRelation | null {
   return null;
 }
 
+function stripLeadingPhrases(value: string, prefixes: string[]): string {
+  for (const prefix of prefixes) {
+    if (value.startsWith(prefix)) {
+      return value.slice(prefix.length).trim();
+    }
+  }
+
+  return value;
+}
+
+function stripAdminSuffix(raw: string): string {
+  const normalized = normalizeText(raw);
+
+  const suffixes = [
+    " division",
+    " div",
+    " divison",
+    " devision",
+    " divisions",
+    " district",
+    " dist",
+    " distrct",
+    " distict",
+    " districts",
+    " upazila",
+    " upzilla",
+    " upazilla",
+    " upzila",
+    " upazilas",
+    " thana",
+  ];
+
+  for (const suffix of suffixes) {
+    if (normalized.endsWith(suffix)) {
+      return normalized.slice(0, normalized.length - suffix.length).trim();
+    }
+  }
+
+  return normalized;
+}
+
+function removeFillerTokens(value: string): string {
+  return value
+    .split(" ")
+    .filter((token) => token && !COMMON_FILLER_TOKENS.has(token))
+    .join(" ")
+    .trim();
+}
+
+function cleanAdministrativeName(raw: string): string {
+  return normalizePlaceName(stripAdminSuffix(removeFillerTokens(raw)));
+}
+
 export function extractDistrictName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
-  if (normalized.startsWith("what is the population of district ")) {
-    return normalizePlaceName(
-      normalized.slice("what is the population of district ".length)
-    );
-  }
+  const stripped = stripLeadingPhrases(normalized, [
+    "what is the population of district ",
+    "population district ",
+    "people live in district ",
+    "show me district ",
+    "show district ",
+    "district ",
+    "where is district ",
+    "locate district ",
+  ]);
 
-  if (normalized.startsWith("population district ")) {
-    return normalizePlaceName(
-      normalized.slice("population district ".length)
-    );
-  }
-
-  if (normalized.startsWith("people live in district ")) {
-    return normalizePlaceName(
-      normalized.slice("people live in district ".length)
-    );
-  }
-
-  if (normalized.startsWith("show me district ")) {
-    return normalizePlaceName(
-      normalized.slice("show me district ".length)
-    );
-  }
-
-  if (normalized.startsWith("district ")) {
-    return normalizePlaceName(normalized.slice("district ".length));
-  }
-
-  return normalizePlaceName(normalized);
+  return cleanAdministrativeName(stripped);
 }
 
 export function extractDivisionName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
-  if (normalized.startsWith("what is the population of division ")) {
-    return normalizePlaceName(
-      normalized.slice("what is the population of division ".length)
-    );
-  }
+  const stripped = stripLeadingPhrases(normalized, [
+    "what is the population of division ",
+    "population division ",
+    "people live in division ",
+    "show me division ",
+    "show division ",
+    "division ",
+    "where is division ",
+    "locate division ",
+  ]);
 
-  if (normalized.startsWith("population division ")) {
-    return normalizePlaceName(
-      normalized.slice("population division ".length)
-    );
-  }
-
-  if (normalized.startsWith("people live in division ")) {
-    return normalizePlaceName(
-      normalized.slice("people live in division ".length)
-    );
-  }
-
-  if (normalized.startsWith("show me division ")) {
-    return normalizePlaceName(
-      normalized.slice("show me division ".length)
-    );
-  }
-
-  if (normalized.startsWith("division ")) {
-    return normalizePlaceName(normalized.slice("division ".length));
-  }
-
-  return normalizePlaceName(normalized);
+  return cleanAdministrativeName(stripped);
 }
 
 export function extractUpazilaName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
-  if (normalized.startsWith("where is upazila ")) {
-    return normalizePlaceName(
-      normalized.slice("where is upazila ".length)
-    );
-  }
+  const stripped = stripLeadingPhrases(normalized, [
+    "where is upazila ",
+    "show me upazila ",
+    "show upazila ",
+    "upazila ",
+    "locate upazila ",
+    "where is ",
+    "where ",
+  ]);
 
-  if (normalized.startsWith("upazila ")) {
-    return normalizePlaceName(normalized.slice("upazila ".length));
-  }
-
-  if (normalized.startsWith("where is ")) {
-    return normalizePlaceName(normalized.slice("where is ".length));
-  }
-
-  if (normalized.startsWith("where ")) {
-    return normalizePlaceName(normalized.slice("where ".length));
-  }
-
-  return normalizePlaceName(normalized);
+  return cleanAdministrativeName(stripped);
 }
 
 export function extractGenericAdministrativeName(prompt: string): string {
   const normalized = normalizeText(prompt);
 
-  if (normalized.startsWith("what is the population of ")) {
-    return normalizePlaceName(
-      normalized.slice("what is the population of ".length)
-    );
-  }
+  let stripped = stripLeadingPhrases(normalized, [
+    "what is the population of ",
+    "population ",
+    "people live in ",
+    "where is ",
+    "where ",
+    "show me ",
+    "show ",
+    "locate ",
+    "zoom to ",
+    "go to ",
+    "display ",
+  ]);
 
-  if (normalized.startsWith("population ")) {
-    return normalizePlaceName(normalized.slice("population ".length));
-  }
+  stripped = stripped.replace(
+    /^(division|district|dist|distrct|distict|upazila|upzilla|upazilla|upzila|thana)\s+/,
+    ""
+  );
 
-  if (normalized.startsWith("people live in ")) {
-    return normalizePlaceName(normalized.slice("people live in ".length));
-  }
-
-  if (normalized.startsWith("where is ")) {
-    return normalizePlaceName(normalized.slice("where is ".length));
-  }
-
-  if (normalized.startsWith("where ")) {
-    return normalizePlaceName(normalized.slice("where ".length));
-  }
-
-  if (normalized.startsWith("show me ")) {
-    return normalizePlaceName(normalized.slice("show me ".length));
-  }
-
-  if (normalized.startsWith("show ")) {
-    return normalizePlaceName(normalized.slice("show ".length));
-  }
-
-  return normalizePlaceName(normalized);
+  return cleanAdministrativeName(stripped);
 }
 
 export function getGenericSearchPriority(prompt: string): AdminLevel[] {
   const normalized = normalizeText(prompt);
+
+  if (containsAny(normalized, ADMIN_LEVEL_ALIASES.upazila)) {
+    return ["upazila", "district", "division"];
+  }
+
+  if (containsAny(normalized, ADMIN_LEVEL_ALIASES.district)) {
+    return ["district", "division", "upazila"];
+  }
+
+  if (containsAny(normalized, ADMIN_LEVEL_ALIASES.division)) {
+    return ["division", "district", "upazila"];
+  }
 
   if (
     normalized.startsWith("what is the population of ") ||
@@ -323,8 +390,15 @@ export function getGenericSearchPriority(prompt: string): AdminLevel[] {
     return ["district", "division", "upazila"];
   }
 
-  if (normalized.startsWith("where is ") || normalized.startsWith("where ")) {
-    return ["upazila", "district", "division"];
+  if (
+    normalized.startsWith("where is ") ||
+    normalized.startsWith("where ") ||
+    normalized.startsWith("locate ") ||
+    normalized.startsWith("zoom to ") ||
+    normalized.startsWith("go to ") ||
+    normalized.startsWith("show me ")
+  ) {
+    return ["division", "district", "upazila"];
   }
 
   return ["division", "district", "upazila"];
@@ -359,32 +433,81 @@ function extractAreaNameFromPrefix(prefix: string): string {
   return prefix.trim();
 }
 
+function resolveAdminLevelToken(text: string): AdminLevel | null {
+  const normalized = normalizeText(text);
+
+  for (const [level, aliases] of Object.entries(ADMIN_LEVEL_ALIASES) as Array<
+    [AdminLevel, string[]]
+  >) {
+    if (aliases.some((alias) => normalized.includes(alias))) {
+      return level;
+    }
+  }
+
+  const allAliases = Object.entries(ADMIN_LEVEL_ALIASES).flatMap(
+    ([level, aliases]) => aliases.map((alias) => ({ level: level as AdminLevel, alias }))
+  );
+
+  const fuzzy = findBestFuzzyMatch(
+    normalized,
+    allAliases.map((item) => item.alias),
+    0.74
+  );
+
+  if (!fuzzy) {
+    return null;
+  }
+
+  const matched = allAliases.find((item) => item.alias === fuzzy.value);
+  return matched?.level ?? null;
+}
+
 export function extractAdministrativeAreaReference(
   prompt: string
 ): AdministrativeAreaReference | null {
   const normalized = normalizeText(prompt);
-  const areaTypes: AdminLevel[] = ["division", "district", "upazila"];
+
+  const tokens: Array<{ type: AdminLevel; aliases: string[] }> = [
+    { type: "division", aliases: ADMIN_LEVEL_ALIASES.division },
+    { type: "district", aliases: ADMIN_LEVEL_ALIASES.district },
+    { type: "upazila", aliases: ADMIN_LEVEL_ALIASES.upazila },
+  ];
 
   let matchedType: AdminLevel | null = null;
   let matchedIndex = -1;
 
-  for (const areaType of areaTypes) {
-    const token = ` ${areaType}`;
-    const index = normalized.lastIndexOf(token);
+  for (const tokenGroup of tokens) {
+    for (const alias of tokenGroup.aliases) {
+      const candidate = ` ${alias}`;
+      const index = normalized.lastIndexOf(candidate);
 
-    if (index > matchedIndex) {
-      matchedIndex = index;
-      matchedType = areaType;
+      if (index > matchedIndex) {
+        matchedIndex = index;
+        matchedType = tokenGroup.type;
+      }
     }
   }
 
   if (!matchedType || matchedIndex < 0) {
-    return null;
+    const fuzzyType = resolveAdminLevelToken(normalized);
+    if (!fuzzyType) {
+      return null;
+    }
+
+    const extracted = extractGenericAdministrativeName(prompt);
+    if (!extracted) {
+      return null;
+    }
+
+    return {
+      areaName: extracted,
+      areaType: fuzzyType,
+    };
   }
 
   const prefix = normalized.slice(0, matchedIndex).trim();
   const rawAreaName = extractAreaNameFromPrefix(prefix);
-  const areaName = normalizePlaceName(rawAreaName);
+  const areaName = cleanAdministrativeName(rawAreaName);
 
   if (!areaName) {
     return null;
@@ -403,14 +526,16 @@ export function extractPortSubtype(prompt: string): PortSubtype {
 
   if (
     normalized.includes("sea ports") ||
-    normalized.includes("sea port")
+    normalized.includes("sea port") ||
+    normalized.includes("seaport")
   ) {
     return "sea";
   }
 
   if (
     normalized.includes("land ports") ||
-    normalized.includes("land port")
+    normalized.includes("land port") ||
+    normalized.includes("landport")
   ) {
     return "land";
   }

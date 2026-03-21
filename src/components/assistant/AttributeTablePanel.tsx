@@ -5,6 +5,8 @@ import type { AssistantAttributeTable } from "../../types/assistant";
 interface Props {
     table: AssistantAttributeTable | null;
     onClose: () => void;
+    renderInline?: boolean;
+    initialFullscreen?: boolean;
 }
 
 function IconButton({
@@ -30,13 +32,13 @@ function IconButton({
                 display: "inline-flex",
                 alignItems: "center",
                 justifyContent: "center",
-                border: "1px solid #d1d5db",
+                border: "1px solid #d7e3ef",
                 borderRadius: "10px",
-                background: "#ffffff",
+                background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
                 color: "#111827",
                 cursor: "pointer",
                 transition: "all 0.15s ease",
-                boxShadow: "0 1px 2px rgba(0,0,0,0.04)",
+                boxShadow: "0 4px 12px rgba(29, 78, 216, 0.06)",
             }}
         >
             {children}
@@ -122,8 +124,8 @@ function AttributeTableContent({
                 width: "100%",
                 height: isModal ? "100%" : "450px",
                 background: "#ffffff",
-                border: isModal ? "1px solid rgba(255,255,255,0.08)" : "1px solid #e5e7eb",
-                borderRadius: isModal ? "20px" : "14px",
+                border: "1px solid transparent",
+                borderRadius: isModal ? "20px" : "16px",
                 boxShadow: isModal
                     ? "0 30px 100px rgba(0,0,0,0.32)"
                     : "0 10px 30px rgba(15,23,42,0.08)",
@@ -132,101 +134,109 @@ function AttributeTableContent({
         >
             <div
                 style={{
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "space-between",
-                    gap: "12px",
-                    padding: "14px 16px",
-                    borderBottom: "1px solid #e5e7eb",
-                    background: "linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)",
-                    flexShrink: 0,
+                    padding: "1px",
+                    background:
+                        "linear-gradient(135deg, rgba(2,6,23,0.18) 0%, rgba(29,78,216,0.2) 52%, rgba(6,182,212,0.16) 100%)",
                 }}
             >
                 <div
                     style={{
-                        minWidth: 0,
                         display: "flex",
-                        flexDirection: "column",
-                        gap: "4px",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "12px",
+                        padding: "14px 16px",
+                        borderBottom: "1px solid #e8eef5",
+                        background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
+                        flexShrink: 0,
                     }}
                 >
                     <div
                         style={{
-                            fontSize: "15px",
-                            fontWeight: 700,
-                            color: "#111827",
-                            lineHeight: 1.2,
-                            wordBreak: "break-word",
+                            minWidth: 0,
+                            display: "flex",
+                            flexDirection: "column",
+                            gap: "4px",
                         }}
                     >
-                        {table.title}
+                        <div
+                            style={{
+                                fontSize: "15px",
+                                fontWeight: 700,
+                                color: "#111827",
+                                lineHeight: 1.2,
+                                wordBreak: "break-word",
+                            }}
+                        >
+                            {table.title}
+                        </div>
+
+                        <div
+                            style={{
+                                display: "flex",
+                                flexWrap: "wrap",
+                                gap: "8px",
+                                fontSize: "12px",
+                                color: "#6b7280",
+                            }}
+                        >
+                            <span
+                                style={{
+                                    padding: "3px 8px",
+                                    borderRadius: "999px",
+                                    background: "#f8fbff",
+                                    border: "1px solid #dbe7f3",
+                                }}
+                            >
+                                Rows: {formatCount(shownRows)}
+                            </span>
+
+                            <span
+                                style={{
+                                    padding: "3px 8px",
+                                    borderRadius: "999px",
+                                    background: "#f8fbff",
+                                    border: "1px solid #dbe7f3",
+                                }}
+                            >
+                                Total: {formatCount(totalRows)}
+                            </span>
+
+                            <span
+                                style={{
+                                    padding: "3px 8px",
+                                    borderRadius: "999px",
+                                    background: "#f8fbff",
+                                    border: "1px solid #dbe7f3",
+                                }}
+                            >
+                                Columns: {formatCount(columns.length)}
+                            </span>
+                        </div>
                     </div>
 
                     <div
                         style={{
                             display: "flex",
-                            flexWrap: "wrap",
+                            alignItems: "center",
                             gap: "8px",
-                            fontSize: "12px",
-                            color: "#6b7280",
+                            flexShrink: 0,
                         }}
                     >
-                        <span
-                            style={{
-                                padding: "3px 8px",
-                                borderRadius: "999px",
-                                background: "#f3f4f6",
-                                border: "1px solid #e5e7eb",
-                            }}
-                        >
-                            Rows: {formatCount(shownRows)}
-                        </span>
+                        {showFullscreenButton && (
+                            <IconButton
+                                title="Open fullscreen"
+                                ariaLabel="Open fullscreen"
+                                onClick={onOpenFullscreen}
+                            >
+                                <FullscreenIcon />
+                            </IconButton>
+                        )}
 
-                        <span
-                            style={{
-                                padding: "3px 8px",
-                                borderRadius: "999px",
-                                background: "#f3f4f6",
-                                border: "1px solid #e5e7eb",
-                            }}
-                        >
-                            Total: {formatCount(totalRows)}
-                        </span>
-
-                        <span
-                            style={{
-                                padding: "3px 8px",
-                                borderRadius: "999px",
-                                background: "#f3f4f6",
-                                border: "1px solid #e5e7eb",
-                            }}
-                        >
-                            Columns: {formatCount(columns.length)}
-                        </span>
-                    </div>
-                </div>
-
-                <div
-                    style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        flexShrink: 0,
-                    }}
-                >
-                    {showFullscreenButton && (
-                        <IconButton
-                            title="Open fullscreen"
-                            ariaLabel="Open fullscreen"
-                            onClick={onOpenFullscreen}
-                        >
-                            <FullscreenIcon />
+                        <IconButton title="Close" ariaLabel="Close" onClick={onClose}>
+                            <CloseIcon />
                         </IconButton>
-                    )}
-
-                    <IconButton title="Close" ariaLabel="Close" onClick={onClose}>
-                        <CloseIcon />
-                    </IconButton>
+                    </div>
                 </div>
             </div>
 
@@ -247,7 +257,7 @@ function AttributeTableContent({
                         maxWidth: "100%",
                         overflowX: "auto",
                         overflowY: "auto",
-                        border: "1px solid #e5e7eb",
+                        border: "1px solid #dbe7f3",
                         borderRadius: "12px",
                         background: "#ffffff",
                     }}
@@ -271,14 +281,14 @@ function AttributeTableContent({
                                             top: 0,
                                             zIndex: 2,
                                             padding: "11px 12px",
-                                            borderBottom: "1px solid #d1d5db",
-                                            borderRight: "1px solid #e5e7eb",
+                                            borderBottom: "1px solid #d7e3ef",
+                                            borderRight: "1px solid #e8eef5",
                                             textAlign: "left",
                                             fontSize: "12px",
                                             fontWeight: 700,
                                             color: "#111827",
                                             whiteSpace: "nowrap",
-                                            background: "#f8fafc",
+                                            background: "linear-gradient(180deg, #f8fbff 0%, #f1f7fd 100%)",
                                             backdropFilter: "blur(4px)",
                                         }}
                                     >
@@ -308,7 +318,7 @@ function AttributeTableContent({
                                     <tr
                                         key={`row-${rowIndex}`}
                                         style={{
-                                            background: rowIndex % 2 === 0 ? "#ffffff" : "#fcfcfd",
+                                            background: rowIndex % 2 === 0 ? "#ffffff" : "#fbfdff",
                                         }}
                                     >
                                         {columns.map((column, colIndex) => (
@@ -317,7 +327,7 @@ function AttributeTableContent({
                                                 style={{
                                                     padding: "10px 12px",
                                                     borderBottom: "1px solid #f1f5f9",
-                                                    borderRight: "1px solid #f8fafc",
+                                                    borderRight: "1px solid #f8fbff",
                                                     fontSize: "13px",
                                                     color: "#111827",
                                                     verticalAlign: "top",
@@ -342,8 +352,17 @@ function AttributeTableContent({
     );
 }
 
-export default function AttributeTablePanel({ table, onClose }: Props) {
-    const [isFullscreen, setIsFullscreen] = useState(false);
+export default function AttributeTablePanel({
+    table,
+    onClose,
+    renderInline = true,
+    initialFullscreen = false,
+}: Props) {
+    const [isFullscreen, setIsFullscreen] = useState(initialFullscreen);
+
+    useEffect(() => {
+        setIsFullscreen(initialFullscreen);
+    }, [initialFullscreen, table]);
 
     useEffect(() => {
         if (!isFullscreen) return;
@@ -351,6 +370,7 @@ export default function AttributeTablePanel({ table, onClose }: Props) {
         const handleKeyDown = (event: KeyboardEvent) => {
             if (event.key === "Escape") {
                 setIsFullscreen(false);
+                onClose();
             }
         };
 
@@ -358,31 +378,34 @@ export default function AttributeTablePanel({ table, onClose }: Props) {
         return () => {
             window.removeEventListener("keydown", handleKeyDown);
         };
-    }, [isFullscreen]);
+    }, [isFullscreen, onClose]);
 
     if (!table) return null;
 
     const closeFullscreenOnly = () => {
         setIsFullscreen(false);
+        onClose();
     };
 
     return (
         <>
-            <div
-                style={{
-                    width: "100%",
-                    height: "100%",
-                    minHeight: 0,
-                    minWidth: 0,
-                }}
-            >
-                <AttributeTableContent
-                    table={table}
-                    onClose={onClose}
-                    showFullscreenButton={true}
-                    onOpenFullscreen={() => setIsFullscreen(true)}
-                />
-            </div>
+            {renderInline && (
+                <div
+                    style={{
+                        width: "100%",
+                        height: "100%",
+                        minHeight: 0,
+                        minWidth: 0,
+                    }}
+                >
+                    <AttributeTableContent
+                        table={table}
+                        onClose={onClose}
+                        showFullscreenButton={true}
+                        onOpenFullscreen={() => setIsFullscreen(true)}
+                    />
+                </div>
+            )}
 
             {isFullscreen && (
                 <div
