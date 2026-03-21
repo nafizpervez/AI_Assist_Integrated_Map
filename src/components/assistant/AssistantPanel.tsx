@@ -13,6 +13,54 @@ interface AssistantPanelProps {
     panelMode?: PanelMode;
 }
 
+function GradientCard({
+    title,
+    children,
+    shadow,
+}: {
+    title: string;
+    children: React.ReactNode;
+    shadow?: string;
+}) {
+    return (
+        <div
+            style={{
+                padding: "1px",
+                borderRadius: "18px",
+                background:
+                    "linear-gradient(135deg, rgba(2,6,23,0.16) 0%, rgba(29,78,216,0.18) 52%, rgba(6,182,212,0.16) 100%)",
+                boxShadow:
+                    shadow ??
+                    "0 10px 28px rgba(15, 23, 42, 0.05), 0 8px 18px rgba(29, 78, 216, 0.05)",
+            }}
+        >
+            <div
+                style={{
+                    borderRadius: "17px",
+                    padding: "14px",
+                    background:
+                        "linear-gradient(180deg, rgba(255,255,255,0.98) 0%, rgba(248,250,252,0.98) 100%)",
+                    boxShadow: "inset 0 1px 0 rgba(255,255,255,0.95)",
+                }}
+            >
+                <div
+                    style={{
+                        fontWeight: 800,
+                        marginBottom: "10px",
+                        color: "#0f172a",
+                        fontSize: "15px",
+                        letterSpacing: "-0.01em",
+                    }}
+                >
+                    {title}
+                </div>
+
+                {children}
+            </div>
+        </div>
+    );
+}
+
 function renderResponseSections(answer: string) {
     const lines = answer
         .split("\n")
@@ -42,70 +90,84 @@ function renderResponseSections(answer: string) {
             {detailLines.length > 0 && (
                 <div
                     style={{
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "14px",
-                        background: "#f8fafc",
-                        overflow: "hidden",
+                        padding: "1px",
+                        borderRadius: "15px",
+                        background:
+                            "linear-gradient(135deg, rgba(2,6,23,0.12) 0%, rgba(29,78,216,0.14) 52%, rgba(6,182,212,0.12) 100%)",
                     }}
                 >
-                    {detailLines.map((line, index) => {
-                        const separatorIndex = line.indexOf(":");
-                        const hasPair = separatorIndex > -1;
+                    <div
+                        style={{
+                            borderRadius: "14px",
+                            background: "#ffffff",
+                            overflow: "hidden",
+                        }}
+                    >
+                        {detailLines.map((line, index) => {
+                            const separatorIndex = line.indexOf(":");
+                            const hasPair = separatorIndex > -1;
 
-                        if (!hasPair) {
+                            if (!hasPair) {
+                                return (
+                                    <div
+                                        key={`${line}-${index}`}
+                                        style={{
+                                            padding: "12px 14px",
+                                            fontSize: "13px",
+                                            color: "#334155",
+                                            borderTop:
+                                                index === 0
+                                                    ? "none"
+                                                    : "1px solid #e8eef5",
+                                        }}
+                                    >
+                                        {line}
+                                    </div>
+                                );
+                            }
+
+                            const label = line.slice(0, separatorIndex).trim();
+                            const value = line.slice(separatorIndex + 1).trim();
+
                             return (
                                 <div
                                     key={`${line}-${index}`}
                                     style={{
+                                        display: "grid",
+                                        gridTemplateColumns: "1fr auto",
+                                        gap: "12px",
+                                        alignItems: "center",
                                         padding: "12px 14px",
-                                        fontSize: "13px",
-                                        color: "#334155",
-                                        borderTop: index === 0 ? "none" : "1px solid #e2e8f0",
+                                        borderTop:
+                                            index === 0
+                                                ? "none"
+                                                : "1px solid #e8eef5",
                                     }}
                                 >
-                                    {line}
+                                    <div
+                                        style={{
+                                            fontSize: "13px",
+                                            fontWeight: 600,
+                                            color: "#334155",
+                                        }}
+                                    >
+                                        {label}
+                                    </div>
+
+                                    <div
+                                        style={{
+                                            fontSize: "13px",
+                                            fontWeight: 700,
+                                            color: "#0f172a",
+                                            textAlign: "right",
+                                        }}
+                                    >
+                                        {value}
+                                    </div>
                                 </div>
                             );
-                        }
-
-                        const label = line.slice(0, separatorIndex).trim();
-                        const value = line.slice(separatorIndex + 1).trim();
-
-                        return (
-                            <div
-                                key={`${line}-${index}`}
-                                style={{
-                                    display: "grid",
-                                    gridTemplateColumns: "1fr auto",
-                                    gap: "12px",
-                                    alignItems: "center",
-                                    padding: "12px 14px",
-                                    borderTop: index === 0 ? "none" : "1px solid #e2e8f0",
-                                }}
-                            >
-                                <div
-                                    style={{
-                                        fontSize: "13px",
-                                        fontWeight: 600,
-                                        color: "#334155",
-                                    }}
-                                >
-                                    {label}
-                                </div>
-
-                                <div
-                                    style={{
-                                        fontSize: "13px",
-                                        fontWeight: 700,
-                                        color: "#0f172a",
-                                        textAlign: "right",
-                                    }}
-                                >
-                                    {value}
-                                </div>
-                            </div>
-                        );
-                    })}
+                        })}
+                    </div>
                 </div>
             )}
         </div>
@@ -130,105 +192,114 @@ function AttributeTableLaunchList({
                 <div
                     key={`${table.layerId}-${table.title}`}
                     style={{
-                        border: "1px solid #e2e8f0",
-                        borderRadius: "14px",
-                        background: "#ffffff",
-                        padding: "14px",
-                        boxShadow: "0 8px 24px rgba(15, 23, 42, 0.05)",
-                        display: "grid",
-                        gap: "10px",
+                        padding: "1px",
+                        borderRadius: "15px",
+                        background:
+                            "linear-gradient(135deg, rgba(2,6,23,0.12) 0%, rgba(29,78,216,0.15) 52%, rgba(6,182,212,0.12) 100%)",
                     }}
                 >
                     <div
                         style={{
-                            display: "flex",
-                            alignItems: "flex-start",
-                            justifyContent: "space-between",
+                            borderRadius: "14px",
+                            background: "#ffffff",
+                            padding: "14px",
+                            display: "grid",
                             gap: "10px",
+                            boxShadow: "0 8px 24px rgba(15, 23, 42, 0.04)",
                         }}
                     >
-                        <div style={{ minWidth: 0 }}>
-                            <div
-                                style={{
-                                    fontSize: "14px",
-                                    fontWeight: 700,
-                                    color: "#0f172a",
-                                    lineHeight: 1.4,
-                                    wordBreak: "break-word",
-                                }}
-                            >
-                                {table.title}
-                            </div>
-
-                            <div
-                                style={{
-                                    marginTop: "6px",
-                                    display: "flex",
-                                    flexWrap: "wrap",
-                                    gap: "8px",
-                                }}
-                            >
-                                <span
-                                    style={{
-                                        fontSize: "12px",
-                                        color: "#475569",
-                                        background: "#f8fafc",
-                                        border: "1px solid #e2e8f0",
-                                        borderRadius: "999px",
-                                        padding: "4px 8px",
-                                    }}
-                                >
-                                    Layer: {table.layerId}
-                                </span>
-
-                                <span
-                                    style={{
-                                        fontSize: "12px",
-                                        color: "#475569",
-                                        background: "#f8fafc",
-                                        border: "1px solid #e2e8f0",
-                                        borderRadius: "999px",
-                                        padding: "4px 8px",
-                                    }}
-                                >
-                                    Rows: {table.shownCount.toLocaleString()}
-                                </span>
-
-                                <span
-                                    style={{
-                                        fontSize: "12px",
-                                        color: "#475569",
-                                        background: "#f8fafc",
-                                        border: "1px solid #e2e8f0",
-                                        borderRadius: "999px",
-                                        padding: "4px 8px",
-                                    }}
-                                >
-                                    Columns: {table.columns.length.toLocaleString()}
-                                </span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div>
-                        <button
-                            type="button"
-                            onClick={() => onOpen(table)}
+                        <div
                             style={{
-                                width: "100%",
-                                padding: "10px 12px",
-                                border: "1px solid #0f172a",
-                                background: "#0f172a",
-                                color: "#ffffff",
-                                borderRadius: "12px",
-                                cursor: "pointer",
-                                fontWeight: 700,
-                                fontSize: "13px",
-                                boxShadow: "0 8px 20px rgba(15, 23, 42, 0.14)",
+                                display: "flex",
+                                alignItems: "flex-start",
+                                justifyContent: "space-between",
+                                gap: "10px",
                             }}
                         >
-                            Open attribute table
-                        </button>
+                            <div style={{ minWidth: 0 }}>
+                                <div
+                                    style={{
+                                        fontSize: "14px",
+                                        fontWeight: 700,
+                                        color: "#0f172a",
+                                        lineHeight: 1.4,
+                                        wordBreak: "break-word",
+                                    }}
+                                >
+                                    {table.title}
+                                </div>
+
+                                <div
+                                    style={{
+                                        marginTop: "6px",
+                                        display: "flex",
+                                        flexWrap: "wrap",
+                                        gap: "8px",
+                                    }}
+                                >
+                                    <span
+                                        style={{
+                                            fontSize: "12px",
+                                            color: "#475569",
+                                            background: "#f8fbff",
+                                            border: "1px solid #dbe7f3",
+                                            borderRadius: "999px",
+                                            padding: "4px 8px",
+                                        }}
+                                    >
+                                        Layer: {table.layerId}
+                                    </span>
+
+                                    <span
+                                        style={{
+                                            fontSize: "12px",
+                                            color: "#475569",
+                                            background: "#f8fbff",
+                                            border: "1px solid #dbe7f3",
+                                            borderRadius: "999px",
+                                            padding: "4px 8px",
+                                        }}
+                                    >
+                                        Rows: {table.shownCount.toLocaleString()}
+                                    </span>
+
+                                    <span
+                                        style={{
+                                            fontSize: "12px",
+                                            color: "#475569",
+                                            background: "#f8fbff",
+                                            border: "1px solid #dbe7f3",
+                                            borderRadius: "999px",
+                                            padding: "4px 8px",
+                                        }}
+                                    >
+                                        Columns: {table.columns.length.toLocaleString()}
+                                    </span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div>
+                            <button
+                                type="button"
+                                onClick={() => onOpen(table)}
+                                style={{
+                                    width: "100%",
+                                    padding: "10px 12px",
+                                    border: "1px solid transparent",
+                                    background:
+                                        "linear-gradient(135deg, #020617 0%, #1d4ed8 55%, #06b6d4 100%)",
+                                    color: "#ffffff",
+                                    borderRadius: "12px",
+                                    cursor: "pointer",
+                                    fontWeight: 700,
+                                    fontSize: "13px",
+                                    boxShadow: "0 8px 18px rgba(29, 78, 216, 0.16)",
+                                }}
+                            >
+                                Open attribute table
+                            </button>
+                        </div>
                     </div>
                 </div>
             ))}
@@ -283,27 +354,7 @@ export default function AssistantPanel({
     return (
         <>
             <div style={{ display: "grid", gap: "12px" }}>
-                <div
-                    style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "16px",
-                        padding: "14px",
-                        background: "#ffffff",
-                        boxShadow: "0 12px 32px rgba(15, 23, 42, 0.05)",
-                    }}
-                >
-                    <div
-                        style={{
-                            fontWeight: 800,
-                            marginBottom: "6px",
-                            color: "#0f172a",
-                            fontSize: "16px",
-                            letterSpacing: "-0.01em",
-                        }}
-                    >
-                        Assistant
-                    </div>
-
+                <GradientCard title="Assistant">
                     <div
                         style={{
                             fontSize: "12px",
@@ -324,14 +375,15 @@ export default function AssistantPanel({
                             width: "100%",
                             resize: "vertical",
                             padding: "12px 13px",
-                            borderRadius: "12px",
-                            border: "1px solid #d1d5db",
-                            background: "#f8fafc",
+                            borderRadius: "14px",
+                            border: "1px solid #d7e3ef",
+                            background: "linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)",
                             fontFamily: "inherit",
                             fontSize: "14px",
                             color: "#0f172a",
                             outline: "none",
                             lineHeight: 1.5,
+                            boxSizing: "border-box",
                         }}
                     />
 
@@ -342,20 +394,21 @@ export default function AssistantPanel({
                             marginTop: "10px",
                             width: "100%",
                             padding: "11px 12px",
-                            border: "1px solid #111827",
-                            background: "#111827",
+                            border: "1px solid transparent",
+                            background:
+                                "linear-gradient(135deg, #020617 0%, #1d4ed8 55%, #06b6d4 100%)",
                             color: "#fff",
                             borderRadius: "12px",
                             cursor: running ? "not-allowed" : "pointer",
                             fontWeight: 700,
                             fontSize: "13px",
-                            opacity: running ? 0.7 : 1,
-                            boxShadow: "0 8px 20px rgba(15, 23, 42, 0.15)",
+                            opacity: running ? 0.75 : 1,
+                            boxShadow: "0 8px 20px rgba(29, 78, 216, 0.16)",
                         }}
                     >
                         {running ? "Running..." : "Run prompt"}
                     </button>
-                </div>
+                </GradientCard>
 
                 <PromptExamples
                     panelMode={panelMode}
@@ -363,29 +416,14 @@ export default function AssistantPanel({
                     onSelect={(value) => void handleExampleSelect(value)}
                 />
 
-                <div
-                    style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "16px",
-                        padding: "14px",
-                        background: "#ffffff",
-                        boxShadow: result
-                            ? "0 12px 32px rgba(15, 23, 42, 0.06)"
-                            : "0 6px 18px rgba(15, 23, 42, 0.03)",
-                    }}
+                <GradientCard
+                    title="Response"
+                    shadow={
+                        result
+                            ? "0 12px 32px rgba(15, 23, 42, 0.06), 0 8px 18px rgba(29, 78, 216, 0.04)"
+                            : "0 6px 18px rgba(15, 23, 42, 0.03)"
+                    }
                 >
-                    <div
-                        style={{
-                            fontWeight: 800,
-                            marginBottom: "10px",
-                            color: "#0f172a",
-                            fontSize: "15px",
-                            letterSpacing: "-0.01em",
-                        }}
-                    >
-                        Response
-                    </div>
-
                     {result ? (
                         <div>{renderResponseSections(result.answer)}</div>
                     ) : (
@@ -393,31 +431,16 @@ export default function AssistantPanel({
                             No prompt has been run yet.
                         </div>
                     )}
-                </div>
+                </GradientCard>
 
-                <div
-                    style={{
-                        border: "1px solid #e5e7eb",
-                        borderRadius: "16px",
-                        padding: "14px",
-                        background: "#ffffff",
-                        boxShadow: availableTables.length
-                            ? "0 12px 32px rgba(15, 23, 42, 0.06)"
-                            : "0 6px 18px rgba(15, 23, 42, 0.03)",
-                    }}
+                <GradientCard
+                    title="Available Attribute Tables"
+                    shadow={
+                        availableTables.length
+                            ? "0 12px 32px rgba(15, 23, 42, 0.06), 0 8px 18px rgba(29, 78, 216, 0.04)"
+                            : "0 6px 18px rgba(15, 23, 42, 0.03)"
+                    }
                 >
-                    <div
-                        style={{
-                            fontWeight: 800,
-                            marginBottom: "10px",
-                            color: "#0f172a",
-                            fontSize: "15px",
-                            letterSpacing: "-0.01em",
-                        }}
-                    >
-                        Available Attribute Tables
-                    </div>
-
                     {availableTables.length > 0 ? (
                         <AttributeTableLaunchList
                             tables={availableTables}
@@ -428,7 +451,7 @@ export default function AssistantPanel({
                             No filtered attribute tables are available for the current result.
                         </div>
                     )}
-                </div>
+                </GradientCard>
             </div>
 
             {selectedTable && (

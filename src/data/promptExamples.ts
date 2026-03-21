@@ -9,7 +9,6 @@ export const promptExamples = [
   "show me Gazipur district",
   "Where is Magura S upazila",
   "show Magura",
-  "show me Magura",
 
   "which district seems most dense",
   "which district has the highest population",
